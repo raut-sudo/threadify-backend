@@ -7,6 +7,7 @@ in app/utils/token.py.
 """
 
 import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from argon2 import PasswordHasher
@@ -84,19 +85,15 @@ def create_access_token(
     return token
 
 
-def create_refresh_token(subject: str) -> str:
-    """Create an RS256-signed refresh token (long-lived)."""
-    expire = datetime.now(UTC) + timedelta(
-        days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
-    )
-    payload = {"sub": subject, "exp": expire, "type": "refresh"}
+def generate_refresh_token() -> str:
+    """Generate an opaque refresh token (UUID4 hex string).
 
-    token = jwt.encode(
-        payload,
-        PRIVATE_KEY,
-        algorithm=settings.JWT_ALGORITHM,
-    )
-    logger.info("Refresh token created: subject=%s", subject)
+    This is NOT a JWT — refresh tokens are stored server-side in the
+    database and looked up by value. A random UUID is sufficient as a
+    lookup key. Expiry is tracked in the DB, not inside the token.
+    """
+    token = uuid.uuid4().hex
+    logger.info("Refresh token generated")
     return token
 
 

@@ -3,3 +3,4 @@ services/user/.env
 services/user/docs/
 services/user/app/core/__pycache__/
 services/user/.env
+services/user/app/__pycache__/

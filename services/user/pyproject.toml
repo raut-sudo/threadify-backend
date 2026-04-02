@@ -1,0 +1,52 @@
+[project]
+name = "user"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.18.4",
+    "asyncpg>=0.31.0",
+    "cryptography>=46.0.6",
+    "fastapi[standard]>=0.135.3",
+    "passlib[bcrypt]>=1.7.4",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "python-jose>=3.5.0",
+    "sqlalchemy>=2.0.48",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.8",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # import sorting
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "C4",  # comprehensions
+    "SIM", # simplifications
+    "RET", # return improvements
+    "ARG", # unused arguments
+    "PTH", # pathlib usage
+]
+
+ignore = [
+    "B008",  # FastAPI Depends() false positives
+    "ARG001", # unused function args (common in FastAPI routes)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]

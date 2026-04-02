@@ -1,0 +1,21 @@
+services:
+  user-auth-db:
+    image: postgres:16-alpine
+    container_name: user-auth-db
+    environment:
+      POSTGRES_USER: user_auth
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: user_auth_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - user-auth-db-data:/var/lib/postgresql/data
+
+  user-auth-redis:
+    image: redis:7-alpine
+    container_name: user-auth-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  user-auth-db-data:

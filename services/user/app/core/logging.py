@@ -2,7 +2,7 @@ import logging
 
 from app.core.config import get_settings
 
-
+# Configure logging at the module level so it's set up before any other imports
 def configure_logging():
     settings = get_settings()
     level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)

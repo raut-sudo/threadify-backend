@@ -9,3 +9,5 @@ services/user/app/schemas/__pycache__/
 services/user/app/models/__pycache__/
 services/user/app/repositories/__pycache__/
 services/user/app/services/__pycache__/
+services/user/app/api/__pycache__/
+services/user/app/api/v1/__pycache__/

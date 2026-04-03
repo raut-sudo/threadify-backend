@@ -19,6 +19,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.models.user import User
 from app.repositories import token_repo, user_repo
 from app.utils.constants import (
     ERR_ACCOUNT_DELETED,
@@ -46,7 +47,7 @@ async def register(
     username: str,
     email: str,
     password: str,
-) -> dict:
+) -> tuple[User, dict]:
     """Create a new user account and return a token pair.
 
     Checks for duplicate username/email, hashes the password,
@@ -81,7 +82,7 @@ async def register(
 
     tokens = await _issue_tokens(db, user)
     logger.info("User registered: %s", username)
-    return tokens
+    return user, tokens
 
 
 # ── Login ───────────────────────────────────────────
@@ -92,7 +93,7 @@ async def login(
     *,
     username: str,
     password: str,
-) -> dict:
+) -> tuple[User, dict]:
     """Authenticate a user by username + password and return tokens.
 
     Validates the user exists, is active, is not banned, and the
@@ -112,7 +113,7 @@ async def login(
 
     tokens = await _issue_tokens(db, user)
     logger.info("User logged in: %s", username)
-    return tokens
+    return user, tokens
 
 
 # ── Token Refresh ───────────────────────────────────

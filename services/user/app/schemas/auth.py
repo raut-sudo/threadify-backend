@@ -7,6 +7,7 @@ All inbound payloads are validated here before reaching the service layer.
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.schemas.user import UserResponse
 from app.utils.constants import (
     PASSWORD_MAX_LENGTH,
     PASSWORD_MIN_LENGTH,
@@ -88,3 +89,27 @@ class TokenRefreshRequest(BaseModel):
         ...,
         description="Opaque refresh token issued at login",
     )
+
+
+class AccessTokenResponse(BaseModel):
+    """Returned by the /refresh endpoint.
+
+    Contains only the short-lived JWT — the new refresh token is
+    transported via an httpOnly cookie, not in the response body.
+    """
+
+    access_token: str
+    token_type: str = TOKEN_TYPE_BEARER
+
+
+class AuthResponse(BaseModel):
+    """Returned by /signup and /login.
+
+    Combines the user profile with the access token so the client
+    gets everything it needs in a single round-trip.  The refresh
+    token is set as an httpOnly cookie.
+    """
+
+    user: UserResponse
+    access_token: str
+    token_type: str = TOKEN_TYPE_BEARER

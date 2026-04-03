@@ -49,3 +49,9 @@ app = FastAPI(
 )
 
 app.include_router(v1_router, prefix="/api/v1")
+
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Liveness probe — returns OK if the process is running."""
+    return {"status": "ok"}

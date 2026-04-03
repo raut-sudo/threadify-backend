@@ -147,7 +147,7 @@ async def update_user(db: AsyncSession, user: User, **fields: object) -> User:
 
     await db.flush()
     await db.refresh(user, attribute_names=["role"])
-    logger.info("User updated: %s (fields=%s)", user.username, list(fields.keys()))
+    logger.debug("User updated: %s (fields=%s)", user.username, list(fields.keys()))
     return user
 
 

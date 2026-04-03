@@ -143,7 +143,7 @@ async def refresh_tokens(db: AsyncSession, *, refresh_token: str) -> dict:
     # Revoke old token, issue new pair
     await token_repo.revoke_token(db, existing)
     tokens = await _issue_tokens(db, user)
-    logger.info("Tokens refreshed: user_id=%s", user.id)
+    logger.debug("Tokens refreshed: user_id=%s", user.id)
     return tokens
 
 

@@ -28,7 +28,7 @@ def generate_tokens(user_id: str) -> dict:
     """Generate an access token + opaque refresh token pair."""
     access = create_access_token(subject=user_id)
     refresh = generate_refresh_token()
-    logger.info("Token pair generated: user_id=%s", user_id)
+    logger.debug("Token pair generated: user_id=%s", user_id)
     return {
         "access_token": access,
         "refresh_token": refresh,

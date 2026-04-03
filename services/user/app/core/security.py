@@ -78,11 +78,7 @@ def create_access_token(
         PRIVATE_KEY,
         algorithm=settings.JWT_ALGORITHM,
     )
-    logger.info(
-        "Access token created: subject=%s, expires=%s",
-        subject,
-        expire,
-    )
+    logger.debug("Access token issued for subject=%s", subject)
     return token
 
 
@@ -94,7 +90,7 @@ def generate_refresh_token() -> str:
     lookup key. Expiry is tracked in the DB, not inside the token.
     """
     token = uuid.uuid4().hex
-    logger.info("Refresh token generated")
+    logger.debug("Refresh token generated")
     return token
 
 

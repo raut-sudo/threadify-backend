@@ -37,7 +37,7 @@ async def create_refresh_token(
     )
     db.add(rt)
     await db.flush()
-    logger.info("Refresh token created: user_id=%s", user_id)
+    logger.debug("Refresh token stored: user_id=%s", user_id)
     return rt
 
 
@@ -59,7 +59,7 @@ async def revoke_token(db: AsyncSession, refresh_token: RefreshToken) -> None:
     """
     refresh_token.revoked = True
     await db.flush()
-    logger.info("Refresh token revoked: id=%s", refresh_token.id)
+    logger.debug("Refresh token revoked: id=%s", refresh_token.id)
 
 
 async def revoke_all_user_tokens(db: AsyncSession, user_id: uuid.UUID) -> int:
@@ -79,5 +79,5 @@ async def revoke_all_user_tokens(db: AsyncSession, user_id: uuid.UUID) -> int:
     result = await db.execute(stmt)
     count = result.rowcount
     await db.flush()
-    logger.info("Revoked %d refresh tokens for user_id=%s", count, user_id)
+    logger.debug("Revoked %d refresh tokens for user_id=%s", count, user_id)
     return count

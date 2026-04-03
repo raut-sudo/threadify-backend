@@ -6,6 +6,7 @@ This is the low-level crypto layer — higher-level token helpers live
 in app/utils/token.py.
 """
 
+import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -92,6 +93,16 @@ def generate_refresh_token() -> str:
     token = uuid.uuid4().hex
     logger.debug("Refresh token generated")
     return token
+
+
+def hash_refresh_token(token: str) -> str:
+    """Return the SHA-256 hex digest of an opaque refresh token.
+
+    The *raw* token is sent to the client (httpOnly cookie).
+    Only the *hash* is persisted in the database, so a DB breach
+    cannot be replayed to hijack sessions.
+    """
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 # ── JWT Verification ────────────────────────────────

@@ -17,6 +17,7 @@ from app.core.security import (
     create_access_token,
     generate_refresh_token,
     hash_password,
+    hash_refresh_token,
     verify_password,
 )
 from app.models.user import User
@@ -126,7 +127,7 @@ async def refresh_tokens(db: AsyncSession, *, refresh_token: str) -> dict:
     not expired. Then atomically revokes the old token and creates
     a replacement along with a fresh access token.
     """
-    existing = await token_repo.get_refresh_token(db, refresh_token)
+    existing = await token_repo.get_refresh_token(db, hash_refresh_token(refresh_token))
     if not existing or existing.revoked or existing.is_expired:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -156,7 +157,7 @@ async def logout(db: AsyncSession, *, refresh_token: str) -> None:
     Silently succeeds even if the token is already revoked or
     doesn't exist — there's nothing for the client to retry.
     """
-    existing = await token_repo.get_refresh_token(db, refresh_token)
+    existing = await token_repo.get_refresh_token(db, hash_refresh_token(refresh_token))
     if existing and not existing.revoked:
         await token_repo.revoke_token(db, existing)
         logger.info("User logged out: token revoked")
@@ -194,12 +195,12 @@ async def _issue_tokens(db: AsyncSession, user) -> dict:
     await token_repo.create_refresh_token(
         db,
         user_id=user.id,
-        token=raw_refresh,
+        token=hash_refresh_token(raw_refresh),  # store only the hash
         expires_days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
     )
 
     return {
         "access_token": access,
-        "refresh_token": raw_refresh,
+        "refresh_token": raw_refresh,  # raw token goes to the client cookie
         "token_type": TOKEN_TYPE_BEARER,
     }

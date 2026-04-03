@@ -1,7 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.api.v1 import router as v1_router
 from app.core.config import get_settings
@@ -47,6 +49,38 @@ app = FastAPI(
     debug=settings.DEBUG,
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Return a structured 422 with every field-level error."""
+    logger.warning(
+        "Validation error on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc.errors(),
+    )
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.errors()},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all for unexpected errors — log and return a safe 500."""
+    logger.exception(
+        "Unhandled exception on %s %s",
+        request.method,
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error"},
+    )
+
 
 app.include_router(v1_router, prefix="/api/v1")
 

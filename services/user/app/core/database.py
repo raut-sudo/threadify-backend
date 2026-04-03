@@ -2,6 +2,7 @@ import logging
 from collections.abc import AsyncGenerator
 
 from fastapi import HTTPException
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -44,9 +45,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
             await session.commit()
             logger.debug("DB session committed")
-        except HTTPException:
-            # Business-logic errors (4xx/5xx) are normal control flow.
-            # No rollback needed — the session had no pending writes.
+        except (HTTPException, RequestValidationError):
+            # HTTPException  — business-logic 4xx/5xx, normal control flow.
+            # RequestValidationError — FastAPI input validation (422), no DB
+            # writes have been made, so no rollback is needed or appropriate.
             raise
         except Exception:
             await session.rollback()

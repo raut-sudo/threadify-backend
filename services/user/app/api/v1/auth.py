@@ -8,7 +8,7 @@ JSON request body as a fallback.
 
 import logging
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException,Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -18,7 +18,6 @@ from app.schemas.auth import (
     AuthResponse,
     LoginRequest,
     RegisterRequest,
-    TokenRefreshRequest,
 )
 from app.schemas.common import MessageResponse
 from app.schemas.user import UserResponse
@@ -125,16 +124,16 @@ async def login(
     summary="Rotate refresh token and get a new access token",
 )
 async def refresh(
-    response: Response,
-    request: Request,
-    db: AsyncSession = Depends(get_db)
+    response: Response, request: Request, db: AsyncSession = Depends(get_db)
 ):
     """Issue a new access + refresh token pair.
 
     Reads the refresh token from the httpOnly cookie (browser flow).
     Falls back to the JSON body for non-browser API clients.
     """
-    token = request.cookies.get(REFRESH_TOKEN_COOKIE) or (await request.json()).get("refresh_token")
+    token = request.cookies.get(REFRESH_TOKEN_COOKIE) or (await request.json()).get(
+        "refresh_token"
+    )
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

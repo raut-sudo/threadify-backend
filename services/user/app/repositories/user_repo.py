@@ -15,6 +15,7 @@ from sqlalchemy.orm import joinedload
 
 from app.models.role import Role
 from app.models.user import User
+from app.utils.constants import DEFAULT_PAGE_LIMIT, DEFAULT_PAGE_SKIP, DEFAULT_ROLES
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +39,7 @@ async def seed_default_roles(db: AsyncSession) -> list[Role]:
     Intended for first-run or test setup. Skips any role whose
     name already appears in the table and returns all roles.
     """
-    defaults = [
-        ("ADMIN", "Full platform access"),
-        ("MOD", "Community moderation privileges"),
-        ("MEMBER", "Standard registered user"),
-    ]
-    for name, description in defaults:
+    for name, description in DEFAULT_ROLES:
         existing = await get_role_by_name(db, name)
         if not existing:
             db.add(Role(name=name, description=description))
@@ -116,8 +112,8 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
 async def list_users(
     db: AsyncSession,
     *,
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = DEFAULT_PAGE_SKIP,
+    limit: int = DEFAULT_PAGE_LIMIT,
 ) -> tuple[list[User], int]:
     """Return a paginated list of users and the total count.
 

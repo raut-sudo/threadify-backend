@@ -9,6 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hash_password
 from app.models.user import User
 from app.repositories import token_repo, user_repo
+from app.utils.constants import (
+    DEFAULT_PAGE_LIMIT,
+    DEFAULT_PAGE_SKIP,
+    ERR_ACCOUNT_ALREADY_DELETED,
+    ERR_EMAIL_REGISTERED,
+    ERR_USER_NOT_FOUND,
+    ERR_USERNAME_TAKEN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +33,7 @@ async def get_profile(db: AsyncSession, *, user_id: uuid.UUID) -> User:
     if not user or user.deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail=ERR_USER_NOT_FOUND,
         )
     return user
 
@@ -50,13 +58,13 @@ async def update_profile(
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Username already taken",
+            detail=ERR_USERNAME_TAKEN,
         )
 
     if email and email != user.email and await user_repo.get_user_by_email(db, email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
+            detail=ERR_EMAIL_REGISTERED,
         )
 
     fields: dict = {}
@@ -81,8 +89,8 @@ async def update_profile(
 async def list_users(
     db: AsyncSession,
     *,
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = DEFAULT_PAGE_SKIP,
+    limit: int = DEFAULT_PAGE_LIMIT,
 ) -> tuple[list[User], int]:
     """Return a paginated list of all users with total count.
 
@@ -104,7 +112,7 @@ async def delete_account(db: AsyncSession, *, user: User) -> User:
     if user.deleted:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Account is already deleted",
+            detail=ERR_ACCOUNT_ALREADY_DELETED,
         )
 
     updated = await user_repo.soft_delete_user(db, user)

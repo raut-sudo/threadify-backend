@@ -20,6 +20,17 @@ from app.core.security import (
     verify_password,
 )
 from app.repositories import token_repo, user_repo
+from app.utils.constants import (
+    ERR_ACCOUNT_DELETED,
+    ERR_DEFAULT_ROLE_MISSING,
+    ERR_EMAIL_REGISTERED,
+    ERR_INVALID_CREDENTIALS,
+    ERR_INVALID_REFRESH_TOKEN,
+    ERR_USER_UNAVAILABLE,
+    ERR_USERNAME_TAKEN,
+    ROLE_MEMBER,
+    TOKEN_TYPE_BEARER,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,19 +56,19 @@ async def register(
     if await user_repo.get_user_by_username(db, username):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Username already taken",
+            detail=ERR_USERNAME_TAKEN,
         )
     if await user_repo.get_user_by_email(db, email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
+            detail=ERR_EMAIL_REGISTERED,
         )
 
-    role = await user_repo.get_role_by_name(db, "MEMBER")
+    role = await user_repo.get_role_by_name(db, ROLE_MEMBER)
     if not role:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Default role not found — database may not be seeded",
+            detail=ERR_DEFAULT_ROLE_MISSING,
         )
 
     user = await user_repo.create_user(
@@ -91,12 +102,12 @@ async def login(
     if not user or not verify_password(password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
+            detail=ERR_INVALID_CREDENTIALS,
         )
     if user.deleted:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account has been deleted",
+            detail=ERR_ACCOUNT_DELETED,
         )
 
     tokens = await _issue_tokens(db, user)
@@ -118,14 +129,14 @@ async def refresh_tokens(db: AsyncSession, *, refresh_token: str) -> dict:
     if not existing or existing.revoked or existing.is_expired:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
+            detail=ERR_INVALID_REFRESH_TOKEN,
         )
 
     user = await user_repo.get_user_by_id(db, existing.user_id)
     if not user or user.deleted:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account unavailable",
+            detail=ERR_USER_UNAVAILABLE,
         )
 
     # Revoke old token, issue new pair
@@ -189,5 +200,5 @@ async def _issue_tokens(db: AsyncSession, user) -> dict:
     return {
         "access_token": access,
         "refresh_token": raw_refresh,
-        "token_type": "bearer",
+        "token_type": TOKEN_TYPE_BEARER,
     }

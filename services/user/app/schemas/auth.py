@@ -7,6 +7,15 @@ All inbound payloads are validated here before reaching the service layer.
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.utils.constants import (
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    TOKEN_TYPE_BEARER,
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH,
+    USERNAME_PATTERN,
+)
+
 
 class RegisterRequest(BaseModel):
     """Inbound payload for POST /auth/register.
@@ -17,9 +26,9 @@ class RegisterRequest(BaseModel):
 
     username: str = Field(
         ...,
-        min_length=3,
-        max_length=50,
-        pattern=r"^[a-zA-Z0-9_]+$",
+        min_length=USERNAME_MIN_LENGTH,
+        max_length=USERNAME_MAX_LENGTH,
+        pattern=USERNAME_PATTERN,
         examples=["john_doe"],
         description="Alphanumeric username (3-50 chars, underscores allowed)",
     )
@@ -30,8 +39,8 @@ class RegisterRequest(BaseModel):
     )
     password: str = Field(
         ...,
-        min_length=8,
-        max_length=128,
+        min_length=PASSWORD_MIN_LENGTH,
+        max_length=PASSWORD_MAX_LENGTH,
         examples=["Str0ngP@ss!"],
         description="Password (8-128 characters)",
     )
@@ -65,7 +74,7 @@ class TokenResponse(BaseModel):
 
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: str = TOKEN_TYPE_BEARER
 
 
 class TokenRefreshRequest(BaseModel):

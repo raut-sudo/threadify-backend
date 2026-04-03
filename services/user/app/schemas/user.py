@@ -10,6 +10,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.utils.constants import (
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH,
+    USERNAME_PATTERN,
+)
+
 
 class RoleResponse(BaseModel):
     """Nested role object embedded inside UserResponse.
@@ -36,8 +44,7 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     role: RoleResponse
-    is_active: bool
-    is_banned: bool
+    deleted: bool
     created_at: datetime
     updated_at: datetime
 
@@ -53,9 +60,9 @@ class UserUpdate(BaseModel):
 
     username: str | None = Field(
         default=None,
-        min_length=3,
-        max_length=50,
-        pattern=r"^[a-zA-Z0-9_]+$",
+        min_length=USERNAME_MIN_LENGTH,
+        max_length=USERNAME_MAX_LENGTH,
+        pattern=USERNAME_PATTERN,
         description="New username",
     )
     email: EmailStr | None = Field(
@@ -64,7 +71,7 @@ class UserUpdate(BaseModel):
     )
     password: str | None = Field(
         default=None,
-        min_length=8,
-        max_length=128,
+        min_length=PASSWORD_MIN_LENGTH,
+        max_length=PASSWORD_MAX_LENGTH,
         description="New password",
     )

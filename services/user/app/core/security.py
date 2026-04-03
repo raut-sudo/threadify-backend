@@ -15,6 +15,7 @@ from argon2.exceptions import VerificationError
 from jose import JWTError, jwt
 
 from app.core.config import get_settings
+from app.utils.constants import TOKEN_TYPE_ACCESS
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def create_access_token(
     expire = datetime.now(UTC) + timedelta(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
     )
-    payload = {"sub": subject, "exp": expire, "type": "access"}
+    payload = {"sub": subject, "exp": expire, "type": TOKEN_TYPE_ACCESS}
     if extra_claims:
         payload.update(extra_claims)
 

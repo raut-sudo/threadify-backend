@@ -19,6 +19,7 @@ from app.core.security import (
     decode_token,
     generate_refresh_token,
 )
+from app.utils.constants import TOKEN_TYPE_ACCESS, TOKEN_TYPE_BEARER
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ def generate_tokens(user_id: str) -> dict:
     return {
         "access_token": access,
         "refresh_token": refresh,
-        "token_type": "bearer",
+        "token_type": TOKEN_TYPE_BEARER,
     }
 
 
@@ -39,7 +40,7 @@ def verify_access_token(token: str) -> str | None:
     """Verify an access token. Returns user_id or None."""
     try:
         payload = decode_token(token)
-        if payload.get("type") != "access":
+        if payload.get("type") != TOKEN_TYPE_ACCESS:
             logger.warning(
                 "Token type mismatch: expected 'access', got '%s'",
                 payload.get("type"),

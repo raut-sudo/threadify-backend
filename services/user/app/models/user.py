@@ -1,10 +1,4 @@
-"""
-User ORM model — the central identity table for the service.
-
-Each user has a foreign-key reference to the 'roles' table,
-owns zero-or-more refresh tokens, and carries soft-delete
-(is_active) and ban (is_banned) flags for lifecycle management.
-"""
+"""User ORM model — the central identity table for the service."""
 
 import uuid
 from datetime import UTC, datetime
@@ -19,9 +13,8 @@ from app.core.database import Base
 class User(Base):
     """A registered user account.
 
-    The 'role_id' FK points to the roles table, letting the
-    service layer resolve permissions via a simple join. Timestamps
-    are timezone-aware UTC; updated_at auto-bumps on every write.
+    The 'deleted' flag is a simple soft-delete: True means the
+    user has deleted their account. The row stays for audit.
     """
 
     __tablename__ = "users"
@@ -52,13 +45,7 @@ class User(Base):
         ForeignKey("roles.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    is_active: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-        server_default="true",
-    )
-    is_banned: Mapped[bool] = mapped_column(
+    deleted: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=False,

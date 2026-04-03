@@ -5,3 +5,7 @@ services/user/app/core/__pycache__/
 services/user/.env
 services/user/app/__pycache__/
 services/user/app/utils/__pycache__
+services/user/app/schemas/__pycache__/
+services/user/app/models/__pycache__/
+services/user/app/repositories/__pycache__/
+services/user/app/services/__pycache__/

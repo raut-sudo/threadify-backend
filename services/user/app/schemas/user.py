@@ -36,8 +36,7 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     role: RoleResponse
-    is_active: bool
-    is_banned: bool
+    deleted: bool
     created_at: datetime
     updated_at: datetime
 

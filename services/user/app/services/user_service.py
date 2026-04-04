@@ -3,19 +3,20 @@
 import logging
 import uuid
 
-from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import (
+    AccountAlreadyDeletedError,
+    EmailAlreadyRegisteredError,
+    UsernameTakenError,
+    UserNotFoundError,
+)
 from app.core.security import hash_password
 from app.models.user import User
 from app.repositories import token_repo, user_repo
 from app.utils.constants import (
     DEFAULT_PAGE_LIMIT,
     DEFAULT_PAGE_SKIP,
-    ERR_ACCOUNT_ALREADY_DELETED,
-    ERR_EMAIL_REGISTERED,
-    ERR_USER_NOT_FOUND,
-    ERR_USERNAME_TAKEN,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,10 +32,7 @@ async def get_profile(db: AsyncSession, *, user_id: uuid.UUID) -> User:
     """
     user = await user_repo.get_user_by_id(db, user_id)
     if not user or user.deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=ERR_USER_NOT_FOUND,
-        )
+        raise UserNotFoundError()
     return user
 
 
@@ -56,16 +54,10 @@ async def update_profile(
         and username != user.username
         and await user_repo.get_user_by_username(db, username)
     ):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=ERR_USERNAME_TAKEN,
-        )
+        raise UsernameTakenError()
 
     if email and email != user.email and await user_repo.get_user_by_email(db, email):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=ERR_EMAIL_REGISTERED,
-        )
+        raise EmailAlreadyRegisteredError()
 
     fields: dict = {}
     if username:
@@ -110,10 +102,7 @@ async def delete_account(db: AsyncSession, *, user: User) -> User:
     The row stays in the DB for audit / foreign-key integrity.
     """
     if user.deleted:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=ERR_ACCOUNT_ALREADY_DELETED,
-        )
+        raise AccountAlreadyDeletedError()
 
     updated = await user_repo.soft_delete_user(db, user)
     await token_repo.revoke_all_user_tokens(db, user.id)

@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1 import router as v1_router
 from app.core.config import get_settings
 from app.core.database import Base, async_session, engine
+from app.core.exceptions import AppException
 from app.core.logging import configure_logging
 from app.repositories.user_repo import seed_default_roles
 
@@ -65,6 +66,23 @@ async def validation_exception_handler(
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": exc.errors()},
+    )
+
+
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
+    """Convert any domain AppException into a structured JSON response."""
+    logger.warning(
+        "Domain error on %s %s: [%s] %s",
+        request.method,
+        request.url.path,
+        exc.status_code,
+        exc.detail,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=exc.headers,
     )
 
 

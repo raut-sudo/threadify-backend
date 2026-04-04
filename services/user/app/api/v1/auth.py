@@ -113,8 +113,8 @@ async def login(
     )
     _set_refresh_cookie(response, tokens["refresh_token"])
     return AuthResponse(
-        user=UserResponse.model_validate(user),
-        access_token=tokens["access_token"],
+        user = UserResponse.model_validate(user),
+        access_token = tokens["access_token"],
     )
 
 

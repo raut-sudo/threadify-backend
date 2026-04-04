@@ -3,31 +3,34 @@ Authentication service — business logic for register, login, refresh, logout.
 
 Orchestrates the user and token repositories together with the
 security module. Every public method receives an AsyncSession
-(injected by the route handler via Depends) and raises HTTPException
-on any auth failure so routes stay thin.
+(injected by the route handler via Depends) and raises a domain
+AppException on any auth failure so routes stay thin.
 """
 
 import logging
 
-from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.exceptions import (
+    AccountDeletedError,
+    DefaultRoleMissingError,
+    EmailAlreadyRegisteredError,
+    InvalidCredentialsError,
+    InvalidRefreshTokenError,
+    UsernameTakenError,
+    UserUnavailableError,
+)
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
     hash_password,
+    hash_refresh_token,
     verify_password,
 )
+from app.models.user import User
 from app.repositories import token_repo, user_repo
 from app.utils.constants import (
-    ERR_ACCOUNT_DELETED,
-    ERR_DEFAULT_ROLE_MISSING,
-    ERR_EMAIL_REGISTERED,
-    ERR_INVALID_CREDENTIALS,
-    ERR_INVALID_REFRESH_TOKEN,
-    ERR_USER_UNAVAILABLE,
-    ERR_USERNAME_TAKEN,
     ROLE_MEMBER,
     TOKEN_TYPE_BEARER,
 )
@@ -46,7 +49,7 @@ async def register(
     username: str,
     email: str,
     password: str,
-) -> dict:
+) -> tuple[User, dict]:
     """Create a new user account and return a token pair.
 
     Checks for duplicate username/email, hashes the password,
@@ -54,22 +57,13 @@ async def register(
     issues access + refresh tokens in one go.
     """
     if await user_repo.get_user_by_username(db, username):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=ERR_USERNAME_TAKEN,
-        )
+        raise UsernameTakenError()
     if await user_repo.get_user_by_email(db, email):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=ERR_EMAIL_REGISTERED,
-        )
+        raise EmailAlreadyRegisteredError()
 
     role = await user_repo.get_role_by_name(db, ROLE_MEMBER)
     if not role:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ERR_DEFAULT_ROLE_MISSING,
-        )
+        raise DefaultRoleMissingError()
 
     user = await user_repo.create_user(
         db,
@@ -81,7 +75,7 @@ async def register(
 
     tokens = await _issue_tokens(db, user)
     logger.info("User registered: %s", username)
-    return tokens
+    return user, tokens
 
 
 # ── Login ───────────────────────────────────────────
@@ -92,7 +86,7 @@ async def login(
     *,
     username: str,
     password: str,
-) -> dict:
+) -> tuple[User, dict]:
     """Authenticate a user by username + password and return tokens.
 
     Validates the user exists, is active, is not banned, and the
@@ -100,19 +94,13 @@ async def login(
     """
     user = await user_repo.get_user_by_username(db, username)
     if not user or not verify_password(password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERR_INVALID_CREDENTIALS,
-        )
+        raise InvalidCredentialsError()
     if user.deleted:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=ERR_ACCOUNT_DELETED,
-        )
+        raise AccountDeletedError()
 
     tokens = await _issue_tokens(db, user)
     logger.info("User logged in: %s", username)
-    return tokens
+    return user, tokens
 
 
 # ── Token Refresh ───────────────────────────────────
@@ -125,24 +113,18 @@ async def refresh_tokens(db: AsyncSession, *, refresh_token: str) -> dict:
     not expired. Then atomically revokes the old token and creates
     a replacement along with a fresh access token.
     """
-    existing = await token_repo.get_refresh_token(db, refresh_token)
+    existing = await token_repo.get_refresh_token(db, hash_refresh_token(refresh_token))
     if not existing or existing.revoked or existing.is_expired:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERR_INVALID_REFRESH_TOKEN,
-        )
+        raise InvalidRefreshTokenError()
 
     user = await user_repo.get_user_by_id(db, existing.user_id)
     if not user or user.deleted:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERR_USER_UNAVAILABLE,
-        )
+        raise UserUnavailableError()
 
     # Revoke old token, issue new pair
     await token_repo.revoke_token(db, existing)
     tokens = await _issue_tokens(db, user)
-    logger.info("Tokens refreshed: user_id=%s", user.id)
+    logger.debug("Tokens refreshed: user_id=%s", user.id)
     return tokens
 
 
@@ -155,7 +137,7 @@ async def logout(db: AsyncSession, *, refresh_token: str) -> None:
     Silently succeeds even if the token is already revoked or
     doesn't exist — there's nothing for the client to retry.
     """
-    existing = await token_repo.get_refresh_token(db, refresh_token)
+    existing = await token_repo.get_refresh_token(db, hash_refresh_token(refresh_token))
     if existing and not existing.revoked:
         await token_repo.revoke_token(db, existing)
         logger.info("User logged out: token revoked")
@@ -193,12 +175,12 @@ async def _issue_tokens(db: AsyncSession, user) -> dict:
     await token_repo.create_refresh_token(
         db,
         user_id=user.id,
-        token=raw_refresh,
+        token=hash_refresh_token(raw_refresh),  # store only the hash
         expires_days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
     )
 
     return {
         "access_token": access,
-        "refresh_token": raw_refresh,
+        "refresh_token": raw_refresh,  # raw token goes to the client cookie
         "token_type": TOKEN_TYPE_BEARER,
     }

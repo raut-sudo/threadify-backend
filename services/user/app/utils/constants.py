@@ -35,8 +35,15 @@ USERNAME_PATTERN = r"^[a-zA-Z0-9_]+$"
 PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 128
 
+# ── Cookie Configuration ────────────────────────────
+
+REFRESH_TOKEN_COOKIE = "refresh_token"
+AUTH_COOKIE_PATH = "/api/v1/auth"
+
 # ── Error Messages ──────────────────────────────────
 
+ERR_INVALID_ACCESS_TOKEN = "Invalid or expired access token"
+ERR_REFRESH_TOKEN_REQUIRED = "Refresh token required"
 ERR_USERNAME_TAKEN = "Username already taken"
 ERR_EMAIL_REGISTERED = "Email already registered"
 ERR_INVALID_CREDENTIALS = "Invalid username or password"

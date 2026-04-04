@@ -75,3 +75,10 @@ class UserUpdate(BaseModel):
         max_length=PASSWORD_MAX_LENGTH,
         description="New password",
     )
+
+
+class UserListResponse(BaseModel):
+    """Paginated list of users returned by GET /users/."""
+
+    users: list[UserResponse]
+    total: int

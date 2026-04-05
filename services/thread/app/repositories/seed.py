@@ -39,3 +39,16 @@ async def seed_entity_statuses(db: AsyncSession) -> None:
 
     await db.flush()
     logger.info("Entity status seed complete")
+
+
+async def get_entity_status_by_name(
+    db: AsyncSession,
+    name: str,
+) -> EntityStatus | None:
+    """Return the EntityStatus row with the given name, or None.
+
+    Used by the service layer to resolve status IDs (ACTIVE,
+    USER_DELETED, MOD_REMOVED) before writing to threads/comments.
+    """
+    stmt = select(EntityStatus).where(EntityStatus.name == name)
+    return (await db.execute(stmt)).scalar_one_or_none()

@@ -17,5 +17,24 @@ services:
     ports:
       - "6379:6379"
 
+  threads-db:
+    image: postgres:16-alpine
+    container_name: threads-db
+    environment:
+      POSTGRES_USER: thread_user
+      POSTGRES_PASSWORD: thread_password
+      POSTGRES_DB: threads_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - threads-db-data:/var/lib/postgresql/data
+  
+  thread-redis:
+    image: redis:7-alpine
+    container_name: thread-redis
+    ports:
+      - "6380:6379"
+
 volumes:
   user-auth-db-data:
+  threads-db-data:

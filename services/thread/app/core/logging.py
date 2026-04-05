@@ -16,17 +16,28 @@ import logging
 
 from app.core.config import get_settings
 
-# Third-party loggers that flood output at INFO/DEBUG.
-# Clamped to WARNING so only genuine problems surface.
-_NOISY_LOGGERS: list[str] = [
-    "uvicorn.access",
-    "uvicorn.error",
-    "sqlalchemy.engine",
-    "sqlalchemy.pool",
-    "asyncpg",
-    "httpcore",
-    "httpx",
-]
+# Third-party loggers silenced to reduce noise.
+#
+# uvicorn.access  → WARNING  : suppresses per-request access lines
+# uvicorn.error   → CRITICAL : suppresses uvicorn's raw multi-line ERROR
+#                               tracebacks — our lifespan handlers log a
+#                               clean CRITICAL message before re-raising so
+#                               nothing useful is lost.
+# watchfiles      → WARNING  : suppresses file-change detection chatter
+#                               from --reload mode
+# sqlalchemy.*    → WARNING  : suppresses SQL query echo
+# asyncpg         → WARNING  : suppresses low-level protocol messages
+_NOISY_LOGGERS: dict[str, int] = {
+    "uvicorn.access": logging.WARNING,
+    "uvicorn.error": logging.CRITICAL,
+    "watchfiles": logging.WARNING,
+    "watchfiles.main": logging.WARNING,
+    "sqlalchemy.engine": logging.WARNING,
+    "sqlalchemy.pool": logging.WARNING,
+    "asyncpg": logging.WARNING,
+    "httpcore": logging.WARNING,
+    "httpx": logging.WARNING,
+}
 
 
 def configure_logging() -> None:
@@ -46,5 +57,5 @@ def configure_logging() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    for name in _NOISY_LOGGERS:
-        logging.getLogger(name).setLevel(logging.WARNING)
+    for name, level in _NOISY_LOGGERS.items():
+        logging.getLogger(name).setLevel(level)

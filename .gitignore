@@ -16,8 +16,13 @@ services/user/.venv/
 
 services/thread/docs
 services/thread/.env
-services/thread/app/core/__pycache__/
-services/thread/app/__pycache__/
-services/thread/app/utils/__pycache__
-services/thread/app/schemas/__pycache__/
 services/thread/.venv/
+services/thread/app/__pycache__/
+services/thread/app/core/__pycache__/
+services/thread/app/utils/__pycache__/
+services/thread/app/models/__pycache__/
+services/thread/app/schemas/__pycache__/
+services/thread/app/repositories/__pycache__/
+services/thread/app/services/__pycache__/
+services/thread/app/api/__pycache__/
+services/thread/app/api/v1/__pycache__/

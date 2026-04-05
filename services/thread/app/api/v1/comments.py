@@ -1,0 +1,238 @@
+"""Comment API routes.
+
+Endpoints
+---------
+POST   /comments                      — create a comment or reply
+GET    /comments                      — list comments
+                                        ?thread_id=<uuid>       → top-level comments
+                                        ?parent_comment_id=<uuid> → replies
+PATCH  /comments/{comment_id}         — update a comment (author only)
+DELETE /comments/{comment_id}         — soft-delete a comment
+POST   /comments/{comment_id}/like    — like a comment
+DELETE /comments/{comment_id}/like    — unlike a comment
+
+Content masking
+---------------
+USER_DELETED comments have their ``content`` replaced with ``"[deleted]"``
+in this route layer before serialisation so the schema stays simple.
+"""
+
+import logging
+import uuid
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user, get_optional_current_user
+from app.core.database import get_db
+from app.repositories import like_repo, user_snap_repo
+from app.schemas.comment import (
+    CommentCreate,
+    CommentListResponse,
+    CommentResponse,
+    CommentUpdate,
+)
+from app.schemas.common import MessageResponse
+from app.schemas.like import LikeResponse
+from app.schemas.user_snap import UserSnapResponse
+from app.services import comment_service, like_service
+from app.utils.constants import STATUS_USER_DELETED
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/comments", tags=["Comments"])
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+async def _enrich_comment(
+    comment,
+    db: AsyncSession,
+    current_user: dict | None,
+) -> CommentResponse:
+    """Build a ``CommentResponse`` with author snap, ``is_liked``, and content
+    masking applied for USER_DELETED comments."""
+    snap = await user_snap_repo.get_user_snap(db, comment.author_id)
+    author = UserSnapResponse.model_validate(snap) if snap is not None else None
+
+    is_liked = False
+    if current_user is not None:
+        is_liked = await like_repo.has_user_liked_comment(
+            db,
+            user_id=current_user["user_id"],
+            comment_id=comment.id,
+        )
+
+    # Mask content for USER_DELETED comments
+    content = (
+        "[deleted]" if comment.status.name == STATUS_USER_DELETED else comment.content
+    )
+
+    return CommentResponse(
+        id=comment.id,
+        thread_id=comment.thread_id,
+        parent_comment_id=comment.parent_comment_id,
+        author_id=comment.author_id,
+        author=author,
+        content=content,
+        status=comment.status.name,
+        like_count=comment.like_count,
+        reply_count=comment.reply_count,
+        is_liked=is_liked,
+        created_at=comment.created_at,
+    )
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+
+@router.post("", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
+async def create_comment(
+    payload: CommentCreate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CommentResponse:
+    """Create a top-level comment or a reply.
+
+    Set ``parent_comment_id`` to ``null`` for a top-level comment, or to
+    an existing comment's UUID for a reply.
+    """
+    comment = await comment_service.create_comment(
+        db,
+        user_id=current_user["user_id"],
+        thread_id=payload.thread_id,
+        content=payload.content,
+        parent_comment_id=payload.parent_comment_id,
+    )
+    return await _enrich_comment(comment, db, current_user)
+
+
+@router.get("", response_model=CommentListResponse)
+async def list_comments(
+    thread_id: uuid.UUID | None = Query(
+        default=None,
+        description="Return top-level comments for this thread",
+    ),
+    parent_comment_id: uuid.UUID | None = Query(
+        default=None,
+        description="Return replies to this comment (overrides thread_id)",
+    ),
+    cursor: str | None = Query(default=None, description="ISO-8601 created_at cursor"),
+    limit: int = Query(default=10, ge=1, le=100),
+    current_user: dict | None = Depends(get_optional_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CommentListResponse:
+    """Paginated list of comments.
+
+    Provide either ``thread_id`` (top-level comments, newest first) or
+    ``parent_comment_id`` (replies, oldest first).  Exactly one must be
+    given; 400 is returned when neither or both are supplied.
+    """
+    if parent_comment_id is None and thread_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide either 'thread_id' or 'parent_comment_id'.",
+        )
+    if parent_comment_id is not None and thread_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide only one of 'thread_id' or 'parent_comment_id'.",
+        )
+
+    parsed_cursor: datetime | None = None
+    if cursor is not None:
+        parsed_cursor = datetime.fromisoformat(cursor)
+
+    if parent_comment_id is not None:
+        comments, pagination = await comment_service.get_replies(
+            db,
+            parent_comment_id=parent_comment_id,
+            cursor=parsed_cursor,
+            limit=limit,
+        )
+    else:
+        comments, pagination = await comment_service.get_comments_for_thread(
+            db,
+            thread_id=thread_id,  # type: ignore[arg-type]
+            cursor=parsed_cursor,
+            limit=limit,
+        )
+
+    enriched = [await _enrich_comment(c, db, current_user) for c in comments]
+    return CommentListResponse(comments=enriched, pagination=pagination)
+
+
+@router.patch("/{comment_id}", response_model=CommentResponse)
+async def update_comment(
+    comment_id: uuid.UUID,
+    payload: CommentUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CommentResponse:
+    """Update a comment's content.  Only the author may update."""
+    comment = await comment_service.update_comment(
+        db,
+        user_id=current_user["user_id"],
+        comment_id=comment_id,
+        content=payload.content,
+    )
+    return await _enrich_comment(comment, db, current_user)
+
+
+@router.delete("/{comment_id}", response_model=MessageResponse)
+async def delete_comment(
+    comment_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    """Soft-delete a comment.
+
+    - Author     → status set to USER_DELETED (content shown as ``[deleted]``)
+    - Mod/Admin  → status set to MOD_REMOVED  (comment hidden entirely)
+    - Anyone else → 403
+    """
+    await comment_service.delete_comment(
+        db,
+        user_id=current_user["user_id"],
+        role=current_user["role"],
+        comment_id=comment_id,
+    )
+    return MessageResponse(message="Comment deleted successfully.")
+
+
+@router.post(
+    "/{comment_id}/like",
+    response_model=LikeResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def like_comment(
+    comment_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> LikeResponse:
+    """Like a comment.  Raises 409 if the user already liked it."""
+    return await like_service.like_comment(
+        db,
+        user_id=current_user["user_id"],
+        comment_id=comment_id,
+    )
+
+
+@router.delete(
+    "/{comment_id}/like",
+    response_model=LikeResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def unlike_comment(
+    comment_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> LikeResponse:
+    """Unlike a comment.  Raises 409 if the user has not liked it."""
+    return await like_service.unlike_comment(
+        db,
+        user_id=current_user["user_id"],
+        comment_id=comment_id,
+    )

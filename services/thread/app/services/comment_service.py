@@ -26,7 +26,7 @@ from app.core.exceptions import (
 )
 from app.events import publisher
 from app.events.payloads import build_comment_created
-from app.repositories import comment_repo, thread_repo
+from app.repositories import comment_repo, thread_repo, user_snap_repo
 from app.repositories.seed import get_entity_status_by_name
 from app.schemas.common import CursorPaginationMeta
 from app.utils.constants import (
@@ -115,9 +115,13 @@ async def create_comment(
         parent_comment_id,
     )
 
+    # Resolve actor_username from the denormalized user_snap cache
+    snap = await user_snap_repo.get_user_snap(db, user_id)
+    actor_username = snap.username if snap else None
+
     event = build_comment_created(
         actor_id=user_id,
-        actor_username=None,
+        actor_username=actor_username,
         post_owner_id=thread.author_id,
         post_id=thread_id,
         comment_id=comment.id,

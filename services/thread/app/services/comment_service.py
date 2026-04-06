@@ -24,6 +24,8 @@ from app.core.exceptions import (
     NotAuthorizedError,
     ThreadNotFoundError,
 )
+from app.events import publisher
+from app.events.payloads import build_comment_created
 from app.repositories import comment_repo, thread_repo
 from app.repositories.seed import get_entity_status_by_name
 from app.schemas.common import CursorPaginationMeta
@@ -112,6 +114,17 @@ async def create_comment(
         thread_id,
         parent_comment_id,
     )
+
+    event = build_comment_created(
+        actor_id=user_id,
+        actor_username=None,
+        post_owner_id=thread.author_id,
+        post_id=thread_id,
+        comment_id=comment.id,
+    )
+    if event:
+        await publisher.publish("notification.comment.created", event)
+
     return comment
 
 

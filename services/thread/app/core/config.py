@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     RSA_PUBLIC_KEY: str
     JWT_ALGORITHM: str = "RS256"
 
+    # ── RabbitMQ ──────────────────────────────────
+    RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
+
     # ── Application ──────────────────────────────────
     APP_NAME: str = "thread-service"
     DEBUG: bool = False

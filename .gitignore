@@ -26,3 +26,5 @@ services/thread/app/repositories/__pycache__/
 services/thread/app/services/__pycache__/
 services/thread/app/api/__pycache__/
 services/thread/app/api/v1/__pycache__/
+
+docs

@@ -65,6 +65,23 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
 
   # ── Application services ────────────────────────────────────────────────────
 
@@ -97,12 +114,15 @@ services:
       - ./services/thread/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://thread_user:thread_password@threads-db:5432/threads_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     expose:
       - "8001"
     depends_on:
       threads-db:
         condition: service_healthy
       thread-redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - threadify-net
@@ -124,6 +144,8 @@ services:
       - threadify-net
     restart: unless-stopped
 
+
+
 networks:
   threadify-net:
     driver: bridge
@@ -131,3 +153,4 @@ networks:
 volumes:
   user-auth-db-data:
   threads-db-data:
+  rabbitmq-data:

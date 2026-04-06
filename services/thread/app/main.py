@@ -25,6 +25,7 @@ from app.core.config import get_settings
 from app.core.database import Base, async_session, engine
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
+from app.events import publisher
 from app.repositories.seed import seed_entity_statuses
 
 configure_logging()
@@ -67,8 +68,14 @@ async def lifespan(_app: FastAPI):
         await db.commit()
         logger.info("Entity statuses seeded")
 
+    try:
+        await publisher.connect(settings.RABBITMQ_URL)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("RabbitMQ unavailable at startup (%s) — events disabled", exc)
+
     yield
 
+    await publisher.close()
     await engine.dispose()
     logger.info("%s shut down", settings.APP_NAME)
 

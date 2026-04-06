@@ -1,4 +1,7 @@
 services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
   user-auth-db:
     image: postgres:16-alpine
     container_name: user-auth-db
@@ -10,12 +13,26 @@ services:
       - "5433:5432"
     volumes:
       - user-auth-db-data:/var/lib/postgresql/data
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_auth -d user_auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   user-auth-redis:
     image: redis:7-alpine
     container_name: user-auth-redis
     ports:
       - "6379:6379"
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   threads-db:
     image: postgres:16-alpine
@@ -28,12 +45,88 @@ services:
       - "5434:5432"
     volumes:
       - threads-db-data:/var/lib/postgresql/data
-  
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thread_user -d threads_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   thread-redis:
     image: redis:7-alpine
     container_name: thread-redis
     ports:
       - "6380:6379"
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Application services ────────────────────────────────────────────────────
+
+  user-service:
+    build:
+      context: ./services/user
+      dockerfile: Dockerfile
+    container_name: user-service
+    env_file:
+      - ./services/user/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user_auth:password@user-auth-db:5432/user_auth_db
+    expose:
+      - "8000"
+    depends_on:
+      user-auth-db:
+        condition: service_healthy
+      user-auth-redis:
+        condition: service_healthy
+    networks:
+      - threadify-net
+    restart: unless-stopped
+
+  thread-service:
+    build:
+      context: ./services/thread
+      dockerfile: Dockerfile
+    container_name: thread-service
+    env_file:
+      - ./services/thread/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://thread_user:thread_password@threads-db:5432/threads_db
+    expose:
+      - "8001"
+    depends_on:
+      threads-db:
+        condition: service_healthy
+      thread-redis:
+        condition: service_healthy
+    networks:
+      - threadify-net
+    restart: unless-stopped
+
+  # ── API Gateway ─────────────────────────────────────────────────────────────
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: gateway
+    ports:
+      - "8080:80"
+    depends_on:
+      - user-service
+      - thread-service
+    networks:
+      - threadify-net
+    restart: unless-stopped
+
+networks:
+  threadify-net:
+    driver: bridge
 
 volumes:
   user-auth-db-data:

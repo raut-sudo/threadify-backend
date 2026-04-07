@@ -67,6 +67,19 @@ services:
       retries: 5
     
 
+  ws-redis:
+    image: redis:7-alpine
+    container_name: ws-redis
+    ports:
+      - "6381:6379"
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: rabbitmq
@@ -168,6 +181,27 @@ services:
       - threadify-net
     restart: unless-stopped
 
+  ws-gateway:
+    build:
+      context: ./services/ws-gateway
+      dockerfile: Dockerfile
+    container_name: ws-gateway
+    env_file:
+      - ./services/ws-gateway/.env
+    environment:
+      REDIS_URL: redis://ws-redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    expose:
+      - "8003"
+    depends_on:
+      ws-redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - threadify-net
+    restart: unless-stopped
+
   # ── API Gateway ─────────────────────────────────────────────────────────────
 
   gateway:
@@ -181,6 +215,7 @@ services:
       - user-service
       - thread-service
       - notification-service
+      - ws-gateway
     networks:
       - threadify-net
     restart: unless-stopped

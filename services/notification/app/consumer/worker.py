@@ -16,9 +16,9 @@ import aio_pika
 from aio_pika.abc import AbstractIncomingMessage
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.repositories import notification_repo
 from app.events import publisher as realtime_publisher
 from app.events.payloads import build_realtime_notification
+from app.repositories import notification_repo
 
 logger = logging.getLogger(__name__)
 

@@ -67,6 +67,19 @@ services:
       retries: 5
     
 
+  ws-redis:
+    image: redis:7-alpine
+    container_name: ws-redis
+    ports:
+      - "6381:6379"
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: rabbitmq
@@ -82,6 +95,25 @@ services:
       interval: 10s
       timeout: 10s
       retries: 10
+
+  notification-db:
+    image: postgres:16-alpine
+    container_name: notification-db
+    environment:
+      POSTGRES_USER: notif_user
+      POSTGRES_PASSWORD: notif_password
+      POSTGRES_DB: notification_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notif_user -d notification_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ── Application services ────────────────────────────────────────────────────
 
@@ -128,6 +160,48 @@ services:
       - threadify-net
     restart: unless-stopped
 
+  notification-service:
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile
+    container_name: notification-service
+    env_file:
+      - ./services/notification/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://notif_user:notif_password@notification-db:5432/notification_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    expose:
+      - "8002"
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - threadify-net
+    restart: unless-stopped
+
+  ws-gateway:
+    build:
+      context: ./services/ws-gateway
+      dockerfile: Dockerfile
+    container_name: ws-gateway
+    env_file:
+      - ./services/ws-gateway/.env
+    environment:
+      REDIS_URL: redis://ws-redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    expose:
+      - "8003"
+    depends_on:
+      ws-redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - threadify-net
+    restart: unless-stopped
+
   # ── API Gateway ─────────────────────────────────────────────────────────────
 
   gateway:
@@ -140,6 +214,8 @@ services:
     depends_on:
       - user-service
       - thread-service
+      - notification-service
+      - ws-gateway
     networks:
       - threadify-net
     restart: unless-stopped
@@ -154,3 +230,4 @@ volumes:
   user-auth-db-data:
   threads-db-data:
   rabbitmq-data:
+  notification-db-data:

@@ -22,6 +22,8 @@ from app.core.exceptions import (
     NotLikedError,
     ThreadNotFoundError,
 )
+from app.events import publisher
+from app.events.payloads import build_like_updated
 from app.repositories import comment_repo, like_repo, thread_repo
 from app.schemas.like import LikeResponse
 
@@ -55,6 +57,15 @@ async def like_thread(
         user_id,
         thread.like_count,
     )
+    await publisher.publish_realtime(
+        "realtime.like",
+        build_like_updated(
+            thread_id=thread_id,
+            like_count=thread.like_count,
+            liked_by=user_id,
+            liked=True,
+        ),
+    )
     return LikeResponse(like_count=thread.like_count, liked=True)
 
 
@@ -82,6 +93,15 @@ async def unlike_thread(
         thread_id,
         user_id,
         thread.like_count,
+    )
+    await publisher.publish_realtime(
+        "realtime.like",
+        build_like_updated(
+            thread_id=thread_id,
+            like_count=thread.like_count,
+            liked_by=user_id,
+            liked=False,
+        ),
     )
     return LikeResponse(like_count=thread.like_count, liked=False)
 

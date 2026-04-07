@@ -1,30 +1,103 @@
+/docs/
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ────────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── uv / pip lockfiles & caches ────────────────────────────────────────────────
+# uv.lock is intentionally tracked — remove this line if you want to commit it
+# uv.lock
+.uv/
+pip-wheel-metadata/
+
+# ── Ruff cache ─────────────────────────────────────────────────────────────────
+.ruff_cache/
+
+# ── Python version pin ─────────────────────────────────────────────────────────
+.python-version
+
+# ── Environment / secrets ──────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── RSA keys / certificates ────────────────────────────────────────────────────
 services/user/certs/
-services/user/.env
-services/user/docs/
-services/user/app/core/__pycache__/
-services/user/.env
-services/user/app/__pycache__/
-services/user/app/utils/__pycache__
-services/user/app/schemas/__pycache__/
-services/user/app/models/__pycache__/
-services/user/app/repositories/__pycache__/
-services/user/app/services/__pycache__/
-services/user/app/api/__pycache__/
-services/user/app/api/v1/__pycache__/
-services/user/.venv/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# ── Nginx runtime files ────────────────────────────────────────────────────────
+nginx.pid
+*.pid
+
+# ── Docker ─────────────────────────────────────────────────────────────────────
+# Dockerfiles and docker-compose are tracked — only ignore runtime artifacts
+.docker/
+
+# ── OS artifacts ───────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*~
+
+# ── Editor / IDE ───────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# ── Logs ───────────────────────────────────────────────────────────────────────
+*.log
+logs/
+/tmp/nginx.access.log
+/tmp/nginx.error.log
+
+# ── Test / coverage artifacts ──────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+
+# ── MyPy ───────────────────────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+
+# ── Screenshots / binary assets in docs (keep .md files) ──────────────────────
+docs/*.png
+docs/*.jpg
+docs/*.jpeg
+docs/*.gif
+docs/*.bmp
+docs/*.ico
 
 
-services/thread/docs
-services/thread/.env
-services/thread/.venv/
-services/thread/app/__pycache__/
-services/thread/app/core/__pycache__/
-services/thread/app/utils/__pycache__/
-services/thread/app/models/__pycache__/
-services/thread/app/schemas/__pycache__/
-services/thread/app/repositories/__pycache__/
-services/thread/app/services/__pycache__/
-services/thread/app/api/__pycache__/
-services/thread/app/api/v1/__pycache__/
 
-docs
+# ─ Pycache and other Python artifacts in services (if any) ─────────────────────────────
+services/**/__pycache__/
+
+services/thread/app/events/__pycache__/__init__.cpython-313.pyc
+services/thread/app/events/__pycache__/payloads.cpython-313.pyc
+services/thread/app/events/__pycache__/publisher.cpython-313.pyc

@@ -25,7 +25,7 @@ from app.core.exceptions import (
     ThreadNotFoundError,
 )
 from app.events import publisher
-from app.events.payloads import build_comment_created
+from app.events.payloads import build_comment_broadcast, build_comment_created
 from app.repositories import comment_repo, thread_repo, user_snap_repo
 from app.repositories.seed import get_entity_status_by_name
 from app.schemas.common import CursorPaginationMeta
@@ -128,6 +128,19 @@ async def create_comment(
     )
     if event:
         await publisher.publish("notification.comment.created", event)
+
+    await publisher.publish_realtime(
+        "realtime.comment",
+        build_comment_broadcast(
+            comment_id=comment.id,
+            thread_id=thread_id,
+            parent_comment_id=parent_comment_id,
+            author_id=user_id,
+            author_username=actor_username,
+            content=content,
+            created_at=comment.created_at,
+        ),
+    )
 
     return comment
 

@@ -3,6 +3,7 @@ WS Gateway end-to-end test.
 Run from services/ws-gateway/ with the venv active:
     .venv/bin/python test_ws.py
 """
+
 import asyncio
 import json
 import urllib.request
@@ -61,7 +62,9 @@ async def main():
     await asyncio.sleep(0.3)
     print("✅ join_thread emitted")
 
-    await sio.emit("leave_thread", {"thread_id": "aaaaaaaa-0000-0000-0000-000000000001"})
+    await sio.emit(
+        "leave_thread", {"thread_id": "aaaaaaaa-0000-0000-0000-000000000001"}
+    )
     await asyncio.sleep(0.3)
     print("✅ leave_thread emitted")
 

@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1 import router as v1_router
 from app.consumer.worker import consume
 from app.core.config import get_settings
+from app.events import publisher as realtime_publisher
 from app.core.database import Base, engine
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
@@ -69,6 +70,13 @@ async def lifespan(_app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         logger.warning("RabbitMQ consumer failed to start (%s) — events disabled", exc)
 
+    # 3. Connect realtime publisher
+    try:
+        await realtime_publisher.connect(settings.RABBITMQ_URL)
+        logger.info("Realtime publisher connected")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Realtime publisher failed to connect (%s) — realtime events disabled", exc)
+
     yield
 
     # Shutdown
@@ -79,6 +87,7 @@ async def lifespan(_app: FastAPI):
         except asyncio.CancelledError:
             logger.info("Consumer task cancelled")
 
+    await realtime_publisher.close()
     await engine.dispose()
     logger.info("%s shut down", settings.APP_NAME)
 

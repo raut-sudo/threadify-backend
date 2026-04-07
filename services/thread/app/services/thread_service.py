@@ -21,7 +21,9 @@ from app.core.exceptions import (
     NotAuthorizedError,
     ThreadNotFoundError,
 )
-from app.repositories import thread_repo
+from app.events import publisher
+from app.events.payloads import build_thread_created
+from app.repositories import thread_repo, user_snap_repo
 from app.repositories.seed import get_entity_status_by_name
 from app.schemas.common import CursorPaginationMeta
 from app.utils.constants import (
@@ -89,6 +91,19 @@ async def create_thread(
         status_id=status_id,
     )
     logger.info("Thread created by user=%s thread=%s", user_id, thread.id)
+
+    snap = await user_snap_repo.get_user_snap(db, user_id)
+    await publisher.publish_realtime(
+        "realtime.post",
+        build_thread_created(
+            thread_id=thread.id,
+            title=thread.title,
+            author_id=user_id,
+            author_username=snap.username if snap else None,
+            created_at=thread.created_at,
+        ),
+    )
+
     return thread
 
 

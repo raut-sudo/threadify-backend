@@ -17,6 +17,8 @@ from aio_pika.abc import AbstractIncomingMessage
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.repositories import notification_repo
+from app.events import publisher as realtime_publisher
+from app.events.payloads import build_realtime_notification
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +82,10 @@ async def _handle_message(
 
             entity = payload.get("entity", {})
 
+            notifications = []
             async with session_factory() as db:
                 for uid_str in target_user_ids:
-                    await notification_repo.create_notification(
+                    notification = await notification_repo.create_notification(
                         db,
                         user_id=uuid.UUID(uid_str),
                         type=payload["event_type"],
@@ -92,7 +95,15 @@ async def _handle_message(
                         entity_id=uuid.UUID(entity["id"]),
                         metadata=payload.get("metadata"),
                     )
+                    notifications.append(notification)
                 await db.commit()
+
+            # Publish realtime event for each notification
+            for notification in notifications:
+                await realtime_publisher.publish_realtime(
+                    "realtime.notification",
+                    build_realtime_notification(notification),
+                )
 
             logger.info(
                 "Persisted %d notification(s) for event_type=%s",

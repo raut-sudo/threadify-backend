@@ -13,6 +13,7 @@ Exception handlers:
   - ``Exception``              → 500 Internal Server Error (safe message).
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -21,6 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api.v1 import router as v1_router
+from app.consumer.worker import consume as consume_user_snaps
 from app.core.config import get_settings
 from app.core.database import Base, async_session, engine
 from app.core.exceptions import AppException
@@ -32,6 +34,8 @@ configure_logging()
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+_consumer_task: asyncio.Task | None = None
 
 
 def _masked_db_url() -> str:
@@ -68,12 +72,26 @@ async def lifespan(_app: FastAPI):
         await db.commit()
         logger.info("Entity statuses seeded")
 
+    # Connect the RabbitMQ publisher (notification + realtime exchanges)
+    await publisher.connect(settings.RABBITMQ_URL)
+
+    # Start UserSnap consumer — keeps the local author cache in sync with user-service
+    global _consumer_task
     try:
-        await publisher.connect(settings.RABBITMQ_URL)
+        _consumer_task = asyncio.create_task(
+            consume_user_snaps(settings.RABBITMQ_URL, async_session)
+        )
+        logger.info("UserSnap consumer task started")
     except Exception as exc:  # noqa: BLE001
-        logger.warning("RabbitMQ unavailable at startup (%s) — events disabled", exc)
+        logger.warning(
+            "UserSnap consumer failed to start (%s) — author info may be stale", exc
+        )
 
     yield
+
+    if _consumer_task and not _consumer_task.done():
+        _consumer_task.cancel()
+        logger.info("UserSnap consumer task cancelled")
 
     await publisher.close()
     await engine.dispose()

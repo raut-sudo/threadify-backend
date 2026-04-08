@@ -28,6 +28,8 @@ from app.core.security import (
     hash_refresh_token,
     verify_password,
 )
+from app.events import publisher as user_publisher
+from app.events.payloads import UserSnapEvent
 from app.models.user import User
 from app.repositories import token_repo, user_repo
 from app.utils.constants import (
@@ -49,6 +51,8 @@ async def register(
     username: str,
     email: str,
     password: str,
+    bio: str | None = None,
+    avatar_url: str | None = None,
 ) -> tuple[User, dict]:
     """Create a new user account and return a token pair.
 
@@ -71,10 +75,23 @@ async def register(
         email=email,
         hashed_password=hash_password(password),
         role_id=role.id,
+        bio=bio,
+        avatar_url=avatar_url,
     )
 
     tokens = await _issue_tokens(db, user)
     logger.info("User registered: %s", username)
+
+    await user_publisher.publish(
+        "user.registered",
+        UserSnapEvent(
+            event_type="user.registered",
+            user_id=str(user.id),
+            username=user.username,
+            avatar_url=user.avatar_url,
+        ),
+    )
+
     return user, tokens
 
 

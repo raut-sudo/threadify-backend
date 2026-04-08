@@ -16,11 +16,12 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.models.entity_status import EntityStatus
+from app.models.tag import Tag, thread_tags
 from app.models.thread import Thread
 
 logger = logging.getLogger(__name__)
@@ -68,11 +69,19 @@ async def list_threads(
     *,
     cursor: datetime | None = None,
     limit: int = 10,
+    search: str | None = None,
+    tag: str | None = None,
 ) -> list[Thread]:
     """Return a cursor-paginated page of ACTIVE threads, newest first.
 
     Only ``ACTIVE`` threads are included — ``USER_DELETED`` and
     ``MOD_REMOVED`` threads are excluded from the public feed.
+
+    Filters:
+        search — PostgreSQL full-text search on title (weight A) and
+                 content (weight B) via the ``search_vector`` tsvector column.
+        tag    — exact match on a tag name (lowercased).  Threads must
+                 be associated with the tag via the ``thread_tags`` table.
 
     ``cursor`` — if provided, returns only threads created *before*
     this timestamp (exclusive), enabling stable forward pagination.
@@ -85,8 +94,36 @@ async def list_threads(
         .order_by(Thread.created_at.desc())
         .limit(limit)
     )
+
     if cursor is not None:
         stmt = stmt.where(Thread.created_at < cursor)
+
+    if search is not None:
+        search = search.strip()
+        if search:
+            # Build a prefix-aware tsquery: each word gets a :* suffix so
+            # partial typing works (e.g. "pro" matches "programming").
+            # Words are ANDed together.  Falls back to ILIKE on title+content
+            # when the tsquery is empty (very short / stop-word-only input).
+            words = search.split()
+            ts_terms = " & ".join(f"{w.replace(chr(39), '')}:*" for w in words if w)
+            if ts_terms:
+                ts_query = func.to_tsquery("english", ts_terms)
+                ilike_pattern = f"%{search}%"
+                stmt = stmt.where(
+                    or_(
+                        Thread.search_vector.op("@@")(ts_query),
+                        Thread.title.ilike(ilike_pattern),
+                        Thread.content.ilike(ilike_pattern),
+                    )
+                )
+
+    if tag is not None:
+        stmt = (
+            stmt.join(thread_tags, Thread.id == thread_tags.c.thread_id)
+            .join(Tag, thread_tags.c.tag_id == Tag.id)
+            .where(Tag.name == tag.lower().strip())
+        )
 
     result = await db.execute(stmt)
     return list(result.unique().scalars().all())
@@ -147,6 +184,6 @@ async def decrement_comment_count(db: AsyncSession, thread_id: uuid.UUID) -> Non
     stmt = (
         update(Thread)
         .where(Thread.id == thread_id)
-        .values(comment_count=Thread.comment_count - 1)
+        .values(comment_count=func.greatest(0, Thread.comment_count - 1))
     )
     await db.execute(stmt)

@@ -10,6 +10,7 @@ Usage::
 from app.repositories import (
     comment_repo,
     like_repo,
+    tag_repo,
     thread_repo,
     user_snap_repo,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "thread_repo",
     "comment_repo",
     "like_repo",
+    "tag_repo",
     "user_snap_repo",
     "seed_entity_statuses",
 ]

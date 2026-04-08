@@ -15,9 +15,14 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.exceptions import AccountDeletedError, InvalidAccessTokenError
+from app.core.exceptions import (
+    AccountDeletedError,
+    InsufficientPermissionsError,
+    InvalidAccessTokenError,
+)
 from app.models.user import User
 from app.repositories import user_repo
+from app.utils.constants import ROLE_ADMIN
 from app.utils.token import verify_access_token
 
 logger = logging.getLogger(__name__)
@@ -53,3 +58,19 @@ async def get_current_user(
         raise AccountDeletedError()
 
     return user
+
+
+async def require_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Ensure the authenticated user has the ADMIN role.
+
+    Chains on ``get_current_user`` — token validation and account
+    checks happen first, then this adds the role gate.
+
+    Raises:
+        InsufficientPermissionsError (403): User is not an admin.
+    """
+    if current_user.role.name != ROLE_ADMIN:
+        raise InsufficientPermissionsError()
+    return current_user

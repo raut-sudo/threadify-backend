@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 EXCHANGE_NAME = "notification_exchange"
 QUEUE_NAME = "threadify.notifications"
-ROUTING_KEY = "notification.*"
+ROUTING_KEY = "notification.#"
 
 
 async def consume(

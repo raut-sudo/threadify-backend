@@ -84,6 +84,8 @@ async def signup(
         username=body.username,
         email=body.email,
         password=body.password,
+        bio=body.bio,
+        avatar_url=body.avatar_url,
     )
     _set_refresh_cookie(response, tokens["refresh_token"])
     return AuthResponse(
@@ -113,8 +115,8 @@ async def login(
     )
     _set_refresh_cookie(response, tokens["refresh_token"])
     return AuthResponse(
-        user = UserResponse.model_validate(user),
-        access_token = tokens["access_token"],
+        user=UserResponse.model_validate(user),
+        access_token=tokens["access_token"],
     )
 
 
@@ -131,9 +133,13 @@ async def refresh(
     Reads the refresh token from the httpOnly cookie (browser flow).
     Falls back to the JSON body for non-browser API clients.
     """
-    token = request.cookies.get(REFRESH_TOKEN_COOKIE) or (await request.json()).get(
-        "refresh_token"
-    )
+    token = request.cookies.get(REFRESH_TOKEN_COOKIE)
+    if not token:
+        try:
+            body = await request.json()
+            token = body.get("refresh_token")
+        except Exception:
+            token = None
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

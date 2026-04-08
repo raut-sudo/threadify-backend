@@ -1,11 +1,13 @@
 """Thread service — business logic for thread lifecycle operations.
 
 Orchestrates thread_repo calls, enforces authorization, and applies
-the deletion visibility rules defined in the LLD (§9):
+the deletion visibility rules:
 
   ACTIVE       → visible to everyone, content shown normally
-  USER_DELETED → accessible via direct link, content intact (feed excluded)
-  MOD_REMOVED  → hidden from all non-privileged users (returns 404)
+  USER_DELETED → visible to everyone, title/content masked as [deleted]
+                 in the route layer.  Comments remain accessible.
+  MOD_REMOVED  → hidden from regular users (returns 404).
+                 Visible to mods/admins for auditing.
 
 Every public function receives an ``AsyncSession`` and raises a domain
 ``AppException`` on any failure, keeping route handlers thin.
@@ -22,8 +24,13 @@ from app.core.exceptions import (
     ThreadNotFoundError,
 )
 from app.events import publisher
-from app.events.payloads import build_thread_created
-from app.repositories import thread_repo, user_snap_repo
+from app.events.payloads import (
+    build_mention_notification,
+    build_thread_created,
+    build_thread_deleted,
+    build_thread_updated,
+)
+from app.repositories import tag_repo, thread_repo, user_snap_repo
 from app.repositories.seed import get_entity_status_by_name
 from app.schemas.common import CursorPaginationMeta
 from app.utils.constants import (
@@ -34,6 +41,7 @@ from app.utils.constants import (
     STATUS_MOD_REMOVED,
     STATUS_USER_DELETED,
 )
+from app.utils.mentions import extract_mentions
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +84,13 @@ async def create_thread(
     user_id: uuid.UUID,
     title: str,
     content: str,
+    tag_names: list[str] | None = None,
 ) -> object:
     """Create a new thread owned by ``user_id``.
 
-    New threads are created with ACTIVE status.
+    New threads are created with ACTIVE status.  If ``tag_names`` are
+    provided, they are normalised to lowercase and associated with the
+    thread via the join table.
     Returns the persisted Thread ORM instance.
     """
     status_id = await _require_status_id(db, STATUS_ACTIVE)
@@ -90,6 +101,17 @@ async def create_thread(
         content=content,
         status_id=status_id,
     )
+
+    if tag_names:
+        tags = await tag_repo.get_or_create_tags(db, tag_names)
+        await db.refresh(thread, attribute_names=["tags"])
+        thread.tags = tags
+        await db.flush()
+
+    # Eagerly load tags so _enrich_thread can access them synchronously.
+    # selectin lazy loading doesn't fire on freshly created objects.
+    await db.refresh(thread, attribute_names=["tags"])
+
     logger.info("Thread created by user=%s thread=%s", user_id, thread.id)
 
     snap = await user_snap_repo.get_user_snap(db, user_id)
@@ -100,9 +122,33 @@ async def create_thread(
             title=thread.title,
             author_id=user_id,
             author_username=snap.username if snap else None,
+            author_avatar_url=snap.avatar_url if snap else None,
             created_at=thread.created_at,
         ),
     )
+
+    # @mention notifications
+    mentioned = extract_mentions(content)
+    if mentioned:
+        resolved = await user_snap_repo.get_user_ids_by_usernames(
+            db,
+            mentioned,
+        )
+        if resolved:
+            event = build_mention_notification(
+                actor_id=user_id,
+                actor_username=snap.username if snap else None,
+                target_user_ids=list(resolved.values()),
+                entity_type="THREAD",
+                entity_id=thread.id,
+                thread_id=thread.id,
+                content_preview=title,
+            )
+            if event:
+                await publisher.publish(
+                    "notification.mentioned",
+                    event,
+                )
 
     return thread
 
@@ -114,8 +160,9 @@ async def update_thread(
     thread_id: uuid.UUID,
     title: str | None = None,
     content: str | None = None,
+    tag_names: list[str] | None = None,
 ) -> object:
-    """Update a thread's title and/or content.
+    """Update a thread's title, content, and/or tags.
 
     Only the thread author may update. Raises ``NotAuthorizedError`` if
     the requesting user is not the author (mods cannot edit others' content).
@@ -127,7 +174,27 @@ async def update_thread(
     if thread.author_id != user_id:
         raise NotAuthorizedError()
 
-    return await thread_repo.update_thread(db, thread, title=title, content=content)
+    updated = await thread_repo.update_thread(db, thread, title=title, content=content)
+
+    if tag_names is not None:
+        tags = await tag_repo.get_or_create_tags(db, tag_names)
+        await db.refresh(updated, attribute_names=["tags"])
+        updated.tags = tags
+        await db.flush()
+        await db.refresh(updated, attribute_names=["tags"])
+
+    await publisher.publish_realtime(
+        "realtime.thread.updated",
+        build_thread_updated(
+            thread_id=updated.id,
+            title=updated.title,
+            content=updated.content,
+            tags=[t.name for t in updated.tags],
+            updated_at=updated.updated_at,
+        ),
+    )
+
+    return updated
 
 
 async def delete_thread(
@@ -139,8 +206,8 @@ async def delete_thread(
 ) -> object:
     """Soft-delete a thread with the appropriate status.
 
-    - Author     → USER_DELETED  (visible with "[deleted]" placeholder)
-    - Mod/Admin  → MOD_REMOVED   (hidden from everyone except mods/admins)
+    - Author     → USER_DELETED  (visible, title/content masked as [deleted])
+    - Mod/Admin  → MOD_REMOVED   (hidden from regular users, visible to mods)
     - Anyone else → NotAuthorizedError
     """
     thread = await thread_repo.get_thread_by_id(db, thread_id)
@@ -155,7 +222,21 @@ async def delete_thread(
         raise NotAuthorizedError()
 
     status_id = await _require_status_id(db, status_name)
-    return await thread_repo.soft_delete_thread(db, thread, status_id=status_id)
+    result = await thread_repo.soft_delete_thread(
+        db,
+        thread,
+        status_id=status_id,
+    )
+
+    await publisher.publish_realtime(
+        "realtime.thread.deleted",
+        build_thread_deleted(
+            thread_id=thread_id,
+            status=status_name,
+        ),
+    )
+
+    return result
 
 
 async def get_thread(
@@ -166,19 +247,33 @@ async def get_thread(
 ) -> object:
     """Fetch a thread, enforcing visibility rules.
 
-    - MOD_REMOVED + non-privileged caller → ``ThreadNotFoundError`` (404)
-    - MOD_REMOVED + mod/admin caller      → returned as-is
-    - USER_DELETED                         → returned as-is (route applies masking)
-    - ACTIVE                               → returned normally
+    - ACTIVE       → returned normally
+    - USER_DELETED → returned as-is (route layer masks title/content)
+    - MOD_REMOVED + non-privileged → ``ThreadNotFoundError`` (404)
+    - MOD_REMOVED + mod/admin      → returned as-is (for auditing)
     """
     thread = await thread_repo.get_thread_by_id(db, thread_id)
     if thread is None:
         raise ThreadNotFoundError()
 
-    if thread.status.name == STATUS_MOD_REMOVED and not _is_privileged(role or ""):
+    status_name = thread.status.name
+
+    if status_name == STATUS_ACTIVE:
+        return thread
+
+    if status_name == STATUS_USER_DELETED:
+        # Visible to everyone — route layer masks title/content as [deleted].
+        # Comments on this thread remain accessible.
+        return thread
+
+    if status_name == STATUS_MOD_REMOVED:
+        # Only mods/admins can view for auditing purposes.
+        if _is_privileged(role or ""):
+            return thread
         raise ThreadNotFoundError()
 
-    return thread
+    # Unknown status — treat as not found
+    raise ThreadNotFoundError()
 
 
 async def list_threads(
@@ -186,13 +281,23 @@ async def list_threads(
     *,
     cursor: datetime | None = None,
     limit: int = DEFAULT_CURSOR_LIMIT,
+    search: str | None = None,
+    tag: str | None = None,
 ) -> tuple[list, CursorPaginationMeta]:
     """Return a cursor-paginated page of ACTIVE threads with pagination meta.
 
     ``cursor`` is the ``created_at`` datetime of the last item from the
     previous page.  Pass ``None`` for the first page.
+    ``search`` triggers PostgreSQL full-text search on title + content.
+    ``tag`` filters by exact tag name (lowercased).
     """
     limit = min(limit, 100)  # guard against unreasonably large requests
-    threads = await thread_repo.list_threads(db, cursor=cursor, limit=limit)
+    threads = await thread_repo.list_threads(
+        db,
+        cursor=cursor,
+        limit=limit,
+        search=search,
+        tag=tag,
+    )
     meta = _build_cursor_meta(threads, limit)
     return threads, meta

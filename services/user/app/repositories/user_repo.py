@@ -15,7 +15,12 @@ from sqlalchemy.orm import joinedload
 
 from app.models.role import Role
 from app.models.user import User
-from app.utils.constants import DEFAULT_PAGE_LIMIT, DEFAULT_PAGE_SKIP, DEFAULT_ROLES
+from app.utils.constants import (
+    DEFAULT_PAGE_LIMIT,
+    DEFAULT_PAGE_SKIP,
+    DEFAULT_ROLES,
+    ROLE_ADMIN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +55,44 @@ async def seed_default_roles(db: AsyncSession) -> list[Role]:
     return list(result.scalars().all())
 
 
+async def seed_admin_user(
+    db: AsyncSession,
+    *,
+    username: str,
+    email: str,
+    password: str,
+) -> User | None:
+    """Create the single bootstrap admin user if they don't already exist.
+
+    This is fully idempotent — if a user with the given username already
+    exists, this function does nothing and returns None.  Should be called
+    after seed_default_roles so the ADMIN role FK is resolvable.
+    """
+    from app.core.security import hash_password  # local import to avoid circular
+
+    existing = await get_user_by_username(db, username)
+    if existing:
+        logger.info("Admin user '%s' already exists — skipping seed", username)
+        return None
+
+    admin_role = await get_role_by_name(db, ROLE_ADMIN)
+    if admin_role is None:
+        logger.error("ADMIN role not found — cannot seed admin user")
+        return None
+
+    user = User(
+        username=username,
+        email=email,
+        hashed_password=hash_password(password),
+        role_id=admin_role.id,
+    )
+    db.add(user)
+    await db.flush()
+    await db.refresh(user, attribute_names=["role"])
+    logger.info("Admin user '%s' seeded (id=%s)", username, user.id)
+    return user
+
+
 # ── User Queries ────────────────────────────────────
 
 
@@ -60,6 +103,8 @@ async def create_user(
     email: str,
     hashed_password: str,
     role_id: uuid.UUID,
+    bio: str | None = None,
+    avatar_url: str | None = None,
 ) -> User:
     """Insert a new user row and return the persisted instance.
 
@@ -71,6 +116,8 @@ async def create_user(
         email=email,
         hashed_password=hashed_password,
         role_id=role_id,
+        bio=bio,
+        avatar_url=avatar_url,
     )
     db.add(user)
     await db.flush()
@@ -114,15 +161,45 @@ async def list_users(
     *,
     skip: int = DEFAULT_PAGE_SKIP,
     limit: int = DEFAULT_PAGE_LIMIT,
+    role: str | None = None,
+    search: str | None = None,
+    deleted: bool | None = False,
 ) -> tuple[list[User], int]:
-    """Return a paginated list of users and the total count.
+    """Return a paginated, filterable list of users and the total count.
 
-    Both active and inactive users are included — filtering
-    by status is left to the service layer or query params.
+    Filters:
+        role:    Exact match on role name (e.g. 'MEMBER', 'MOD', 'ADMIN').
+        search:  Case-insensitive substring match on username OR email.
+        deleted: True = only banned, False = only active (default),
+                 None = all users.
     """
+    from sqlalchemy import or_
+
+    # ── Build WHERE clauses ──────────────────────────
+    conditions = []
+
+    if deleted is not None:
+        conditions.append(User.deleted == deleted)
+
+    if role is not None:
+        conditions.append(User.role.has(Role.name == role.upper()))
+
+    if search is not None:
+        pattern = f"%{search}%"
+        conditions.append(
+            or_(
+                User.username.ilike(pattern),
+                User.email.ilike(pattern),
+            )
+        )
+
+    # ── Count query ──────────────────────────────────
     count_stmt = select(func.count()).select_from(User)
+    for cond in conditions:
+        count_stmt = count_stmt.where(cond)
     total = (await db.execute(count_stmt)).scalar() or 0
 
+    # ── Data query ───────────────────────────────────
     stmt = (
         select(User)
         .options(joinedload(User.role))
@@ -130,6 +207,9 @@ async def list_users(
         .offset(skip)
         .limit(limit)
     )
+    for cond in conditions:
+        stmt = stmt.where(cond)
+
     result = await db.execute(stmt)
     users = list(result.unique().scalars().all())
     return users, total
@@ -138,12 +218,12 @@ async def list_users(
 async def update_user(db: AsyncSession, user: User, **fields: object) -> User:
     """Apply a dict of field updates to an existing User instance.
 
-    Only non-None values in `fields` are written. The caller must
+    All values in `fields` are written — including None (used to
+    clear nullable fields like bio and avatar_url).  The caller must
     have already validated / hashed any sensitive values.
     """
     for key, value in fields.items():
-        if value is not None:
-            setattr(user, key, value)
+        setattr(user, key, value)
 
     await db.flush()
     await db.refresh(user, attribute_names=["role"])

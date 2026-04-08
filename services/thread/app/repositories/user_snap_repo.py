@@ -41,6 +41,47 @@ async def get_user_snap(
     return result.scalar_one_or_none()
 
 
+async def get_user_ids_by_usernames(
+    db: AsyncSession,
+    usernames: set[str],
+) -> dict[str, uuid.UUID]:
+    """Resolve a set of usernames to their user_ids.
+
+    Returns a dict mapping ``username → user_id`` for every username
+    that has a matching row in the ``user_snap`` table.  Unknown
+    usernames are silently omitted.
+    """
+    if not usernames:
+        return {}
+    stmt = select(UserSnap.username, UserSnap.user_id).where(
+        UserSnap.username.in_(usernames)
+    )
+    result = await db.execute(stmt)
+    return {row.username: row.user_id for row in result.all()}
+
+
+async def search_usernames(
+    db: AsyncSession,
+    *,
+    query: str,
+    limit: int = 10,
+) -> list[UserSnap]:
+    """Search user snaps by username prefix (case-insensitive).
+
+    Used by the ``GET /user-snaps/search`` @mention autocomplete endpoint.
+    Returns up to *limit* rows ordered alphabetically.
+    """
+    pattern = f"{query}%"
+    stmt = (
+        select(UserSnap)
+        .where(UserSnap.username.ilike(pattern))
+        .order_by(UserSnap.username)
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def upsert_user_snap(
     db: AsyncSession,
     *,

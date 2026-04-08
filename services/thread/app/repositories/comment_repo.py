@@ -14,7 +14,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -76,12 +76,17 @@ async def list_top_level_comments(
     thread_id: uuid.UUID,
     cursor: datetime | None = None,
     limit: int = 10,
+    include_mod_removed: bool = False,
 ) -> list[Comment]:
     """Return cursor-paginated top-level comments for a thread, newest first.
 
-    Top-level means ``parent_comment_id IS NULL``.  ``MOD_REMOVED``
-    comments are excluded entirely from the public listing — they are
-    invisible to regular users.
+    Top-level means ``parent_comment_id IS NULL``.
+
+    Visibility:
+      Regular users (include_mod_removed=False):
+        ACTIVE + USER_DELETED (masked as [deleted] in route layer).
+      Mods/admins (include_mod_removed=True):
+        ACTIVE + USER_DELETED + MOD_REMOVED.
     """
     stmt = (
         select(Comment)
@@ -90,11 +95,20 @@ async def list_top_level_comments(
         .where(
             Comment.thread_id == thread_id,
             Comment.parent_comment_id.is_(None),
-            EntityStatus.name != "MOD_REMOVED",
         )
         .order_by(Comment.created_at.desc())
         .limit(limit)
     )
+
+    if include_mod_removed:
+        # Mods see all statuses
+        stmt = stmt.where(
+            EntityStatus.name.in_(["ACTIVE", "USER_DELETED", "MOD_REMOVED"])
+        )
+    else:
+        # Regular users see ACTIVE + USER_DELETED (masked in route layer)
+        stmt = stmt.where(EntityStatus.name.in_(["ACTIVE", "USER_DELETED"]))
+
     if cursor is not None:
         stmt = stmt.where(Comment.created_at < cursor)
 
@@ -108,11 +122,15 @@ async def list_replies(
     parent_comment_id: uuid.UUID,
     cursor: datetime | None = None,
     limit: int = 10,
+    include_mod_removed: bool = False,
 ) -> list[Comment]:
     """Return cursor-paginated replies to a specific comment, oldest first.
 
     Replies are sorted ASC so conversations read chronologically.
-    ``MOD_REMOVED`` replies are excluded.
+
+    Visibility:
+      Regular users: ACTIVE + USER_DELETED.
+      Mods/admins (include_mod_removed=True): all statuses.
     """
     stmt = (
         select(Comment)
@@ -120,11 +138,18 @@ async def list_replies(
         .options(joinedload(Comment.status))
         .where(
             Comment.parent_comment_id == parent_comment_id,
-            EntityStatus.name != "MOD_REMOVED",
         )
         .order_by(Comment.created_at.asc())
         .limit(limit)
     )
+
+    if include_mod_removed:
+        stmt = stmt.where(
+            EntityStatus.name.in_(["ACTIVE", "USER_DELETED", "MOD_REMOVED"])
+        )
+    else:
+        stmt = stmt.where(EntityStatus.name.in_(["ACTIVE", "USER_DELETED"]))
+
     if cursor is not None:
         # For ASC pagination cursor returns rows created *after* the cursor.
         stmt = stmt.where(Comment.created_at > cursor)
@@ -187,6 +212,6 @@ async def decrement_reply_count(
     stmt = (
         update(Comment)
         .where(Comment.id == parent_comment_id)
-        .values(reply_count=Comment.reply_count - 1)
+        .values(reply_count=func.greatest(0, Comment.reply_count - 1))
     )
     await db.execute(stmt)

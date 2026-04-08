@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     SOCKET_PATH: str = "/ws"
     PING_INTERVAL: int = 25
     PING_TIMEOUT: int = 10
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
 
     # ── Application ──────────────────────────────────────────────────────────
     APP_NAME: str = "ws-gateway"

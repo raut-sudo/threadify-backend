@@ -21,7 +21,7 @@ service layer checks via ``has_user_liked_*`` first to give a clean error.
 import logging
 import uuid
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.comment import Comment
@@ -94,7 +94,7 @@ async def unlike_thread(
     await db.execute(
         update(Thread)
         .where(Thread.id == thread_id)
-        .values(like_count=Thread.like_count - 1)
+        .values(like_count=func.greatest(0, Thread.like_count - 1))
     )
     await db.flush()
     logger.info("Thread unliked: thread=%s user=%s", thread_id, user_id)
@@ -160,7 +160,7 @@ async def unlike_comment(
     await db.execute(
         update(Comment)
         .where(Comment.id == comment_id)
-        .values(like_count=Comment.like_count - 1)
+        .values(like_count=func.greatest(0, Comment.like_count - 1))
     )
     await db.flush()
     logger.info("Comment unliked: comment=%s user=%s", comment_id, user_id)

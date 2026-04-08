@@ -26,9 +26,11 @@ settings = get_settings()
 _TTL = 1800  # 30 minutes
 
 # ── Socket.IO server (module-level singleton) ─────────────────────────────────
+_cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+
 sio: socketio.AsyncServer = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins="*",
+    cors_allowed_origins=_cors_origins,
     ping_interval=settings.PING_INTERVAL,
     ping_timeout=settings.PING_TIMEOUT,
 )

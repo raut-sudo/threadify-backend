@@ -1,4 +1,12 @@
-/docs/
+# ── Documentation ──────────────────────────────────────────────────────────────
+# All docs directories across the repo (root + per-service)
+docs/
+**/docs/
+
+# Standalone planning / scratch files
+services/user/plan1.md
+services/user/plan2.md
+
 # ── Python ─────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
@@ -23,7 +31,7 @@ ENV/
 .uv/
 pip-wheel-metadata/
 
-# ── Ruff cache ─────────────────────────────────────────────────────────────────
+# ── Ruff / linter caches ──────────────────────────────────────────────────────
 .ruff_cache/
 
 # ── Python version pin ─────────────────────────────────────────────────────────
@@ -69,8 +77,6 @@ Desktop.ini
 # ── Logs ───────────────────────────────────────────────────────────────────────
 *.log
 logs/
-/tmp/nginx.access.log
-/tmp/nginx.error.log
 
 # ── Test / coverage artifacts ──────────────────────────────────────────────────
 .pytest_cache/
@@ -84,20 +90,3 @@ coverage.xml
 # ── MyPy ───────────────────────────────────────────────────────────────────────
 .mypy_cache/
 .dmypy.json
-
-# ── Screenshots / binary assets in docs (keep .md files) ──────────────────────
-docs/*.png
-docs/*.jpg
-docs/*.jpeg
-docs/*.gif
-docs/*.bmp
-docs/*.ico
-
-
-
-# ─ Pycache and other Python artifacts in services (if any) ─────────────────────────────
-services/**/__pycache__/
-
-services/thread/app/events/__pycache__/__init__.cpython-313.pyc
-services/thread/app/events/__pycache__/payloads.cpython-313.pyc
-services/thread/app/events/__pycache__/publisher.cpython-313.pyc

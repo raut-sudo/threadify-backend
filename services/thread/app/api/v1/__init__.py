@@ -12,10 +12,12 @@ Route prefixes and tags
 from fastapi import APIRouter
 
 from app.api.v1.comments import router as comments_router
+from app.api.v1.tags import router as tags_router
 from app.api.v1.threads import router as threads_router
 from app.api.v1.user_snaps import router as user_snaps_router
 
 router = APIRouter()
 router.include_router(threads_router)
 router.include_router(comments_router)
+router.include_router(tags_router)
 router.include_router(user_snaps_router)

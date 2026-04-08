@@ -1,0 +1,60 @@
+"""Centralised constants for the user service.
+
+Keeps magic strings and numbers in one place so they stay
+consistent across services, repos, schemas, and tests.
+"""
+
+# ── Role Names ──────────────────────────────────────
+
+ROLE_ADMIN = "ADMIN"
+ROLE_MOD = "MOD"
+ROLE_MEMBER = "MEMBER"
+
+DEFAULT_ROLES: list[tuple[str, str]] = [
+    (ROLE_ADMIN, "Full platform access"),
+    (ROLE_MOD, "Community moderation privileges"),
+    (ROLE_MEMBER, "Standard registered user"),
+]
+
+# ── Token Types ─────────────────────────────────────
+
+TOKEN_TYPE_BEARER = "bearer"
+TOKEN_TYPE_ACCESS = "access"
+
+# ── Pagination ──────────────────────────────────────
+
+DEFAULT_PAGE_SKIP = 0
+DEFAULT_PAGE_LIMIT = 50
+
+# ── Validation Constraints ──────────────────────────
+
+USERNAME_MIN_LENGTH = 3
+USERNAME_MAX_LENGTH = 50
+USERNAME_PATTERN = r"^[a-zA-Z0-9_]+$"
+
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 128
+
+# ── Cookie Configuration ────────────────────────────
+
+REFRESH_TOKEN_COOKIE = "refresh_token"
+AUTH_COOKIE_PATH = "/api/v1/auth"
+
+# ── Error Messages ──────────────────────────────────
+
+ERR_INVALID_ACCESS_TOKEN = "Invalid or expired access token"
+ERR_REFRESH_TOKEN_REQUIRED = "Refresh token required"
+ERR_USERNAME_TAKEN = "Username already taken"
+ERR_EMAIL_REGISTERED = "Email already registered"
+ERR_INVALID_CREDENTIALS = "Invalid username or password"
+ERR_ACCOUNT_DELETED = "Account has been deleted"
+ERR_ACCOUNT_ALREADY_DELETED = "Account is already deleted"
+ERR_USER_NOT_FOUND = "User not found"
+ERR_USER_UNAVAILABLE = "User account unavailable"
+ERR_INVALID_REFRESH_TOKEN = "Invalid or expired refresh token"
+ERR_DEFAULT_ROLE_MISSING = "Default role not found — database may not be seeded"
+ERR_INSUFFICIENT_PERMISSIONS = "Admin privileges required"
+ERR_CANNOT_MODIFY_ADMIN = "Cannot modify another admin's account"
+ERR_CANNOT_MODIFY_SELF = "Cannot change your own role or ban yourself"
+ERR_INVALID_ROLE = "Invalid role — must be MEMBER or MOD"
+ERR_WRONG_PASSWORD = "Current password is incorrect"

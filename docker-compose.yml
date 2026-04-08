@@ -1,0 +1,205 @@
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  user-auth-db:
+    image: postgres:16-alpine
+    container_name: user-auth-db
+    environment:
+      POSTGRES_USER: user_auth
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: user_auth_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - user-auth-db-data:/var/lib/postgresql/data
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_auth -d user_auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  threads-db:
+    image: postgres:16-alpine
+    container_name: threads-db
+    environment:
+      POSTGRES_USER: thread_user
+      POSTGRES_PASSWORD: thread_password
+      POSTGRES_DB: threads_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - threads-db-data:/var/lib/postgresql/data
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thread_user -d threads_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ws-redis:
+    image: redis:7-alpine
+    container_name: ws-redis
+    ports:
+      - "6381:6379"
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  notification-db:
+    image: postgres:16-alpine
+    container_name: notification-db
+    environment:
+      POSTGRES_USER: notif_user
+      POSTGRES_PASSWORD: notif_password
+      POSTGRES_DB: notification_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    networks:
+      - threadify-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notif_user -d notification_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Application services ────────────────────────────────────────────────────
+
+  user-service:
+    build:
+      context: ./services/user
+      dockerfile: Dockerfile
+    container_name: user-service
+    env_file:
+      - ./services/user/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user_auth:password@user-auth-db:5432/user_auth_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    expose:
+      - "8000"
+    depends_on:
+      user-auth-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - threadify-net
+    restart: unless-stopped
+
+  thread-service:
+    build:
+      context: ./services/thread
+      dockerfile: Dockerfile
+    container_name: thread-service
+    env_file:
+      - ./services/thread/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://thread_user:thread_password@threads-db:5432/threads_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    expose:
+      - "8001"
+    depends_on:
+      threads-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - threadify-net
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile
+    container_name: notification-service
+    env_file:
+      - ./services/notification/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://notif_user:notif_password@notification-db:5432/notification_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    expose:
+      - "8002"
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - threadify-net
+    restart: unless-stopped
+
+  ws-gateway:
+    build:
+      context: ./services/ws-gateway
+      dockerfile: Dockerfile
+    container_name: ws-gateway
+    env_file:
+      - ./services/ws-gateway/.env
+    environment:
+      REDIS_URL: redis://ws-redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    expose:
+      - "8003"
+    depends_on:
+      ws-redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - threadify-net
+    restart: unless-stopped
+
+  # ── API Gateway ─────────────────────────────────────────────────────────────
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: gateway
+    ports:
+      - "8080:80"
+    depends_on:
+      - user-service
+      - thread-service
+      - notification-service
+      - ws-gateway
+    networks:
+      - threadify-net
+    restart: unless-stopped
+
+
+
+networks:
+  threadify-net:
+    driver: bridge
+
+volumes:
+  user-auth-db-data:
+  threads-db-data:
+  rabbitmq-data:
+  notification-db-data:

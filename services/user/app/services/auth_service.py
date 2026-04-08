@@ -1,0 +1,203 @@
+"""
+Authentication service — business logic for register, login, refresh, logout.
+
+Orchestrates the user and token repositories together with the
+security module. Every public method receives an AsyncSession
+(injected by the route handler via Depends) and raises a domain
+AppException on any auth failure so routes stay thin.
+"""
+
+import logging
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
+from app.core.exceptions import (
+    AccountDeletedError,
+    DefaultRoleMissingError,
+    EmailAlreadyRegisteredError,
+    InvalidCredentialsError,
+    InvalidRefreshTokenError,
+    UsernameTakenError,
+    UserUnavailableError,
+)
+from app.core.security import (
+    create_access_token,
+    generate_refresh_token,
+    hash_password,
+    hash_refresh_token,
+    verify_password,
+)
+from app.events import publisher as user_publisher
+from app.events.payloads import UserSnapEvent
+from app.models.user import User
+from app.repositories import token_repo, user_repo
+from app.utils.constants import (
+    ROLE_MEMBER,
+    TOKEN_TYPE_BEARER,
+)
+
+logger = logging.getLogger(__name__)
+
+settings = get_settings()
+
+
+# ── Registration ────────────────────────────────────
+
+
+async def register(
+    db: AsyncSession,
+    *,
+    username: str,
+    email: str,
+    password: str,
+    bio: str | None = None,
+    avatar_url: str | None = None,
+) -> tuple[User, dict]:
+    """Create a new user account and return a token pair.
+
+    Checks for duplicate username/email, hashes the password,
+    assigns the default MEMBER role, persists the user, and
+    issues access + refresh tokens in one go.
+    """
+    if await user_repo.get_user_by_username(db, username):
+        raise UsernameTakenError()
+    if await user_repo.get_user_by_email(db, email):
+        raise EmailAlreadyRegisteredError()
+
+    role = await user_repo.get_role_by_name(db, ROLE_MEMBER)
+    if not role:
+        raise DefaultRoleMissingError()
+
+    user = await user_repo.create_user(
+        db,
+        username=username,
+        email=email,
+        hashed_password=hash_password(password),
+        role_id=role.id,
+        bio=bio,
+        avatar_url=avatar_url,
+    )
+
+    tokens = await _issue_tokens(db, user)
+    logger.info("User registered: %s", username)
+
+    await user_publisher.publish(
+        "user.registered",
+        UserSnapEvent(
+            event_type="user.registered",
+            user_id=str(user.id),
+            username=user.username,
+            avatar_url=user.avatar_url,
+        ),
+    )
+
+    return user, tokens
+
+
+# ── Login ───────────────────────────────────────────
+
+
+async def login(
+    db: AsyncSession,
+    *,
+    username: str,
+    password: str,
+) -> tuple[User, dict]:
+    """Authenticate a user by username + password and return tokens.
+
+    Validates the user exists, is active, is not banned, and the
+    password matches. On success issues a fresh token pair.
+    """
+    user = await user_repo.get_user_by_username(db, username)
+    if not user or not verify_password(password, user.hashed_password):
+        raise InvalidCredentialsError()
+    if user.deleted:
+        raise AccountDeletedError()
+
+    tokens = await _issue_tokens(db, user)
+    logger.info("User logged in: %s", username)
+    return user, tokens
+
+
+# ── Token Refresh ───────────────────────────────────
+
+
+async def refresh_tokens(db: AsyncSession, *, refresh_token: str) -> dict:
+    """Rotate a refresh token — revoke the old one, issue a new pair.
+
+    Validates the token exists in the DB, is not revoked, and has
+    not expired. Then atomically revokes the old token and creates
+    a replacement along with a fresh access token.
+    """
+    existing = await token_repo.get_refresh_token(db, hash_refresh_token(refresh_token))
+    if not existing or existing.revoked or existing.is_expired:
+        raise InvalidRefreshTokenError()
+
+    user = await user_repo.get_user_by_id(db, existing.user_id)
+    if not user or user.deleted:
+        raise UserUnavailableError()
+
+    # Revoke old token, issue new pair
+    await token_repo.revoke_token(db, existing)
+    tokens = await _issue_tokens(db, user)
+    logger.debug("Tokens refreshed: user_id=%s", user.id)
+    return tokens
+
+
+# ── Logout ──────────────────────────────────────────
+
+
+async def logout(db: AsyncSession, *, refresh_token: str) -> None:
+    """Revoke a single refresh token (standard logout).
+
+    Silently succeeds even if the token is already revoked or
+    doesn't exist — there's nothing for the client to retry.
+    """
+    existing = await token_repo.get_refresh_token(db, hash_refresh_token(refresh_token))
+    if existing and not existing.revoked:
+        await token_repo.revoke_token(db, existing)
+        logger.info("User logged out: token revoked")
+
+
+async def logout_all(db: AsyncSession, *, user_id) -> int:
+    """Revoke every active refresh token for a user (logout everywhere).
+
+    Returns the number of tokens that were revoked.
+    """
+    count = await token_repo.revoke_all_user_tokens(db, user_id)
+    logger.info("Logout-all: revoked %d tokens for user_id=%s", count, user_id)
+    return count
+
+
+# ── Internal Helpers ────────────────────────────────
+
+
+async def _issue_tokens(db: AsyncSession, user) -> dict:
+    """Create an access + refresh token pair and persist the refresh token.
+
+    The access token JWT carries sub (user_id), username, and role
+    as extra claims for downstream services to consume without a
+    DB round-trip.
+    """
+    access = create_access_token(
+        subject=str(user.id),
+        extra_claims={
+            "username": user.username,
+            "role": user.role.name,
+        },
+    )
+    raw_refresh = generate_refresh_token()
+
+    await token_repo.create_refresh_token(
+        db,
+        user_id=user.id,
+        token=hash_refresh_token(raw_refresh),  # store only the hash
+        expires_days=settings.REFRESH_TOKEN_EXPIRE_DAYS,
+    )
+
+    return {
+        "access_token": access,
+        "refresh_token": raw_refresh,  # raw token goes to the client cookie
+        "token_type": TOKEN_TYPE_BEARER,
+    }

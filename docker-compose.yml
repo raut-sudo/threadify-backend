@@ -21,19 +21,6 @@ services:
       timeout: 5s
       retries: 5
 
-  user-auth-redis:
-    image: redis:7-alpine
-    container_name: user-auth-redis
-    ports:
-      - "6379:6379"
-    networks:
-      - threadify-net
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   threads-db:
     image: postgres:16-alpine
     container_name: threads-db
@@ -52,20 +39,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  thread-redis:
-    image: redis:7-alpine
-    container_name: thread-redis
-    ports:
-      - "6380:6379"
-    networks:
-      - threadify-net
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    
 
   ws-redis:
     image: redis:7-alpine
@@ -126,12 +99,13 @@ services:
       - ./services/user/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://user_auth:password@user-auth-db:5432/user_auth_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     expose:
       - "8000"
     depends_on:
       user-auth-db:
         condition: service_healthy
-      user-auth-redis:
+      rabbitmq:
         condition: service_healthy
     networks:
       - threadify-net
@@ -151,8 +125,6 @@ services:
       - "8001"
     depends_on:
       threads-db:
-        condition: service_healthy
-      thread-redis:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy

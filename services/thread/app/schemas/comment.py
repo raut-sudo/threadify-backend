@@ -14,7 +14,7 @@ Deletion visibility rules (applied in the service layer):
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.common import CursorPaginationMeta
 from app.schemas.user_snap import UserSnapResponse
@@ -40,6 +40,12 @@ class CommentUpdate(BaseModel):
     """
 
     content: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _require_content(self) -> "CommentUpdate":
+        if self.content is None:
+            raise ValueError("'content' must be provided.")
+        return self
 
 
 class CommentResponse(BaseModel):

@@ -9,7 +9,7 @@ second round-trip.
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.common import CursorPaginationMeta
 from app.schemas.user_snap import UserSnapResponse
@@ -33,6 +33,14 @@ class ThreadUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=300)
     content: str | None = Field(default=None, min_length=1)
     tags: list[str] | None = Field(default=None, max_length=10)
+
+    @model_validator(mode="after")
+    def _require_at_least_one_field(self) -> "ThreadUpdate":
+        if self.title is None and self.content is None and self.tags is None:
+            raise ValueError(
+                "At least one of 'title', 'content', or 'tags' must be provided."
+            )
+        return self
 
 
 class ThreadResponse(BaseModel):

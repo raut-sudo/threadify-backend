@@ -41,6 +41,22 @@ async def get_user_snap(
     return result.scalar_one_or_none()
 
 
+async def get_user_snaps_by_ids(
+    db: AsyncSession,
+    user_ids: set[uuid.UUID],
+) -> dict[uuid.UUID, UserSnap]:
+    """Batch-fetch user snapshots for a set of user_ids.
+
+    Returns a dict mapping ``user_id → UserSnap``.  Missing IDs are
+    silently omitted — callers should handle ``None`` for unknown authors.
+    """
+    if not user_ids:
+        return {}
+    stmt = select(UserSnap).where(UserSnap.user_id.in_(user_ids))
+    result = await db.execute(stmt)
+    return {snap.user_id: snap for snap in result.scalars().all()}
+
+
 async def get_user_ids_by_usernames(
     db: AsyncSession,
     usernames: set[str],

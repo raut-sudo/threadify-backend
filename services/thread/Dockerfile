@@ -5,12 +5,12 @@ WORKDIR /app
 # Install uv for fast dependency resolution
 RUN pip install --no-cache-dir uv
 
-# Copy dependency manifest and install dependencies
+# Copy dependency manifest and application source
 COPY pyproject.toml .
-RUN uv pip install --system --no-cache .
-
-# Copy application source
 COPY app/ ./app/
+
+# Install dependencies
+RUN uv pip install --system --no-cache .
 
 EXPOSE 8001
 

@@ -15,7 +15,7 @@ import logging
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_optional_current_user
@@ -87,6 +87,67 @@ async def _enrich_thread(
     )
 
 
+async def _enrich_threads(
+    threads: list,
+    db: AsyncSession,
+    current_user: dict | None,
+) -> list[ThreadResponse]:
+    """Batch-enrich a list of threads with author snaps and ``is_liked``.
+
+    Replaces the per-item ``_enrich_thread`` loop with:
+      1. One ``WHERE user_id IN (…)`` for all author snaps.
+      2. One ``WHERE thread_id IN (…)`` for all like checks.
+    """
+    if not threads:
+        return []
+
+    # 1. Batch-fetch all author snaps
+    author_ids = {t.author_id for t in threads}
+    snaps_map = await user_snap_repo.get_user_snaps_by_ids(db, author_ids)
+
+    # 2. Batch-fetch liked thread IDs
+    liked_ids: set[uuid.UUID] = set()
+    if current_user is not None:
+        thread_ids = {t.id for t in threads}
+        liked_ids = await like_repo.get_liked_thread_ids(
+            db,
+            user_id=current_user["user_id"],
+            thread_ids=thread_ids,
+        )
+
+    # 3. Build responses from pre-fetched data
+    results: list[ThreadResponse] = []
+    for thread in threads:
+        snap = snaps_map.get(thread.author_id)
+        author = UserSnapResponse.model_validate(snap) if snap is not None else None
+
+        status_name = thread.status.name
+        if status_name == STATUS_USER_DELETED:
+            title = "[deleted]"
+            content = "[deleted]"
+        else:
+            title = thread.title
+            content = thread.content
+
+        results.append(
+            ThreadResponse(
+                id=thread.id,
+                title=title,
+                content=content,
+                author_id=thread.author_id,
+                author=author,
+                status=status_name,
+                like_count=thread.like_count,
+                comment_count=thread.comment_count,
+                is_liked=thread.id in liked_ids,
+                tags=[tag.name for tag in thread.tags],
+                created_at=thread.created_at,
+                updated_at=thread.updated_at,
+            )
+        )
+    return results
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
@@ -133,7 +194,13 @@ async def list_threads(
     """
     parsed_cursor: datetime | None = None
     if cursor is not None:
-        parsed_cursor = datetime.fromisoformat(cursor)
+        try:
+            parsed_cursor = datetime.fromisoformat(cursor)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid cursor format — expected ISO-8601 datetime.",
+            )
 
     threads, pagination = await thread_service.list_threads(
         db,
@@ -143,7 +210,7 @@ async def list_threads(
         tag=tag,
     )
 
-    enriched = [await _enrich_thread(t, db, current_user) for t in threads]
+    enriched = await _enrich_threads(threads, db, current_user)
     return ThreadListResponse(threads=enriched, pagination=pagination)
 
 

@@ -18,7 +18,6 @@ from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
 
 from app.models.entity_status import EntityStatus
 from app.models.tag import Tag, thread_tags
@@ -57,9 +56,7 @@ async def get_thread_by_id(
 
     Returns ``None`` if no thread matches the given UUID.
     """
-    stmt = (
-        select(Thread).options(joinedload(Thread.status)).where(Thread.id == thread_id)
-    )
+    stmt = select(Thread).where(Thread.id == thread_id)
     result = await db.execute(stmt)
     return result.unique().scalar_one_or_none()
 
@@ -89,7 +86,6 @@ async def list_threads(
     stmt = (
         select(Thread)
         .join(EntityStatus, Thread.status_id == EntityStatus.id)
-        .options(joinedload(Thread.status))
         .where(EntityStatus.name == "ACTIVE")
         .order_by(Thread.created_at.desc())
         .limit(limit)

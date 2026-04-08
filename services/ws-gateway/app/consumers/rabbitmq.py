@@ -103,32 +103,29 @@ async def handle_comment_like_update(payload: dict) -> None:
 
 
 async def handle_thread_updated(payload: dict) -> None:
-    """Broadcast a thread edit to all viewers + global feed."""
+    """Broadcast a thread edit to all connected clients.
+
+    A single global broadcast covers both the feed page and the thread
+    detail page — no room-specific emit needed (avoids duplicates for
+    users who are in the thread room).
+    """
     thread_id = payload.get("thread_id")
     if not thread_id:
         return
-    await sio.emit(
-        "thread_updated",
-        payload.get("data", {}),
-        room=f"thread:{thread_id}",
-    )
-    # Also broadcast to global feed so thread lists stay fresh
     await sio.emit("thread_updated", payload.get("data", {}))
-    logger.debug("Emitted thread_updated to thread:%s", thread_id)
+    logger.debug("Broadcast thread_updated for thread:%s", thread_id)
 
 
 async def handle_thread_deleted(payload: dict) -> None:
-    """Broadcast a thread deletion to all viewers + global feed."""
+    """Broadcast a thread deletion to all connected clients.
+
+    Single global broadcast — same rationale as handle_thread_updated.
+    """
     thread_id = payload.get("thread_id")
     if not thread_id:
         return
-    await sio.emit(
-        "thread_deleted",
-        payload.get("data", {}),
-        room=f"thread:{thread_id}",
-    )
     await sio.emit("thread_deleted", payload.get("data", {}))
-    logger.debug("Emitted thread_deleted to thread:%s", thread_id)
+    logger.debug("Broadcast thread_deleted for thread:%s", thread_id)
 
 
 async def handle_comment_updated(payload: dict) -> None:

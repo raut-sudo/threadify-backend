@@ -104,7 +104,7 @@ class Comment(Base):
     parent: Mapped["Comment | None"] = relationship(
         "Comment",
         foreign_keys="[Comment.parent_comment_id]",
-        lazy="selectin",
+        lazy="noload",
     )
 
     def __repr__(self) -> str:

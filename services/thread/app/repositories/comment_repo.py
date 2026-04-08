@@ -16,7 +16,6 @@ from datetime import UTC, datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
 
 from app.models.comment import Comment
 from app.models.entity_status import EntityStatus
@@ -61,11 +60,7 @@ async def get_comment_by_id(
 
     Returns ``None`` if no comment matches the given UUID.
     """
-    stmt = (
-        select(Comment)
-        .options(joinedload(Comment.status))
-        .where(Comment.id == comment_id)
-    )
+    stmt = select(Comment).where(Comment.id == comment_id)
     result = await db.execute(stmt)
     return result.unique().scalar_one_or_none()
 
@@ -91,7 +86,6 @@ async def list_top_level_comments(
     stmt = (
         select(Comment)
         .join(EntityStatus, Comment.status_id == EntityStatus.id)
-        .options(joinedload(Comment.status))
         .where(
             Comment.thread_id == thread_id,
             Comment.parent_comment_id.is_(None),
@@ -135,7 +129,6 @@ async def list_replies(
     stmt = (
         select(Comment)
         .join(EntityStatus, Comment.status_id == EntityStatus.id)
-        .options(joinedload(Comment.status))
         .where(
             Comment.parent_comment_id == parent_comment_id,
         )

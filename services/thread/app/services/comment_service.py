@@ -35,7 +35,7 @@ from app.events.payloads import (
     build_mention_notification,
 )
 from app.repositories import comment_repo, thread_repo, user_snap_repo
-from app.repositories.seed import get_entity_status_by_name
+from app.repositories.seed import get_cached_status_id, get_entity_status_by_name
 from app.schemas.common import CursorPaginationMeta
 from app.utils.constants import (
     DEFAULT_CURSOR_LIMIT,
@@ -64,6 +64,10 @@ def _build_cursor_meta(items: list, limit: int) -> CursorPaginationMeta:
 
 
 async def _require_status_id(db: AsyncSession, name: str) -> uuid.UUID:
+    """Cache-first lookup, falls back to DB if cache is empty."""
+    cached = get_cached_status_id(name)
+    if cached is not None:
+        return cached
     status = await get_entity_status_by_name(db, name)
     if status is None:
         raise RuntimeError(f"Required entity status '{name}' not found in DB.")

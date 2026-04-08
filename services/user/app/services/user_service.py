@@ -65,7 +65,8 @@ async def change_password(
         user,
         hashed_password=hash_password(new_password),
     )
-    logger.info("Password changed for user: %s", user.username)
+    await token_repo.revoke_all_user_tokens(db, user.id)
+    logger.info("Password changed for user: %s (all tokens revoked)", user.username)
 
 
 async def update_profile(

@@ -78,7 +78,11 @@ async def publish(routing_key: str, event: BaseModel) -> None:
 
 
 async def publish_realtime(routing_key: str, event: BaseModel) -> None:
-    """Publish to realtime_exchange (consumed by ws-gateway). Fire-and-forget."""
+    """Publish to realtime_exchange (consumed by ws-gateway). Fire-and-forget.
+
+    Uses TRANSIENT delivery — realtime events are ephemeral and do not
+    need to survive a RabbitMQ restart.
+    """
     if _realtime_exchange is None:
         logger.warning(
             "RabbitMQ not connected — dropping realtime event '%s'", routing_key
@@ -90,7 +94,7 @@ async def publish_realtime(routing_key: str, event: BaseModel) -> None:
             Message(
                 body=event.model_dump_json().encode(),
                 content_type="application/json",
-                delivery_mode=DeliveryMode.PERSISTENT,
+                delivery_mode=DeliveryMode.NOT_PERSISTENT,
             ),
             routing_key=routing_key,
         )

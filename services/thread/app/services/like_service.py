@@ -14,6 +14,7 @@ Every public function receives an ``AsyncSession`` and raises a domain
 import logging
 import uuid
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -141,7 +142,10 @@ async def like_comment(
     ):
         raise AlreadyLikedError()
 
-    await like_repo.like_comment(db, user_id=user_id, comment_id=comment_id)
+    try:
+        await like_repo.like_comment(db, user_id=user_id, comment_id=comment_id)
+    except IntegrityError:
+        raise AlreadyLikedError()
 
     await db.refresh(comment, attribute_names=["like_count"])
     logger.info(

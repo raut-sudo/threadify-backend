@@ -5,6 +5,7 @@ RUN rm /etc/nginx/conf.d/default.conf
 
 # Copy gateway configuration
 COPY nginx.conf /etc/nginx/nginx.conf
+COPY cors.conf /etc/nginx/cors.conf
 
 EXPOSE 80
 

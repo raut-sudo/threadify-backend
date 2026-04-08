@@ -115,16 +115,22 @@ app = FastAPI(
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    """Return a structured 422 with every field-level validation error."""
+    """Return a structured 422 with every field-level validation error.
+
+    Pydantic v2's ``model_validator`` errors include a raw ``ValueError``
+    in ``ctx.error`` which is not JSON-serializable.  We strip the ``ctx``
+    key to avoid ``TypeError`` during JSON encoding.
+    """
     logger.warning(
         "Validation error on %s %s: %s",
         request.method,
         request.url.path,
         exc.errors(),
     )
+    safe_errors = [{k: v for k, v in err.items() if k != "ctx"} for err in exc.errors()]
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": exc.errors()},
+        content={"detail": safe_errors},
     )
 
 

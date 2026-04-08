@@ -6,6 +6,7 @@ thread or comment is created.  Safe to re-run — existing rows are skipped.
 """
 
 import logging
+import uuid
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,10 @@ from app.models.entity_status import EntityStatus
 from app.utils.constants import STATUS_ACTIVE, STATUS_MOD_REMOVED, STATUS_USER_DELETED
 
 logger = logging.getLogger(__name__)
+
+# In-memory cache populated once at startup by ``seed_entity_statuses``.
+# Maps status name → UUID.  Avoids a DB round-trip on every create/delete.
+_status_id_cache: dict[str, "uuid.UUID"] = {}
 
 # (name, description) pairs — order matters only for readability in the DB.
 _STATUSES: list[tuple[str, str]] = [
@@ -38,7 +43,14 @@ async def seed_entity_statuses(db: AsyncSession) -> None:
             logger.info("Seeded entity status: %s", name)
 
     await db.flush()
-    logger.info("Entity status seed complete")
+
+    # Populate the in-memory cache so service-layer lookups never hit the DB.
+    for name, _ in _STATUSES:
+        row = (
+            await db.execute(select(EntityStatus).where(EntityStatus.name == name))
+        ).scalar_one()
+        _status_id_cache[row.name] = row.id
+    logger.info("Entity status seed complete (cache: %s)", list(_status_id_cache))
 
 
 async def seed_search_trigger(db: AsyncSession) -> None:
@@ -95,6 +107,15 @@ async def seed_search_trigger(db: AsyncSession) -> None:
         )
     )
     logger.info("Search vector trigger seeded")
+
+
+def get_cached_status_id(name: str) -> uuid.UUID | None:
+    """Return the cached UUID for a status name, or None if not cached.
+
+    The cache is populated at startup by ``seed_entity_statuses``.
+    This avoids a DB round-trip on every thread/comment create and delete.
+    """
+    return _status_id_cache.get(name)
 
 
 async def get_entity_status_by_name(

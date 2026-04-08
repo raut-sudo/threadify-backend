@@ -100,6 +100,26 @@ async def unlike_thread(
     logger.info("Thread unliked: thread=%s user=%s", thread_id, user_id)
 
 
+async def get_liked_thread_ids(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    thread_ids: set[uuid.UUID],
+) -> set[uuid.UUID]:
+    """Return the subset of *thread_ids* that the user has liked.
+
+    Single query replaces N individual ``has_user_liked_thread`` calls.
+    """
+    if not thread_ids:
+        return set()
+    stmt = select(ThreadLike.thread_id).where(
+        ThreadLike.user_id == user_id,
+        ThreadLike.thread_id.in_(thread_ids),
+    )
+    result = await db.execute(stmt)
+    return {row[0] for row in result.all()}
+
+
 # ── Comment likes ─────────────────────────────────────────────────────────────
 
 
@@ -116,6 +136,26 @@ async def has_user_liked_comment(
     )
     result = await db.execute(stmt)
     return result.scalar_one_or_none() is not None
+
+
+async def get_liked_comment_ids(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    comment_ids: set[uuid.UUID],
+) -> set[uuid.UUID]:
+    """Return the subset of *comment_ids* that the user has liked.
+
+    Single query replaces N individual ``has_user_liked_comment`` calls.
+    """
+    if not comment_ids:
+        return set()
+    stmt = select(CommentLike.comment_id).where(
+        CommentLike.user_id == user_id,
+        CommentLike.comment_id.in_(comment_ids),
+    )
+    result = await db.execute(stmt)
+    return {row[0] for row in result.all()}
 
 
 async def like_comment(

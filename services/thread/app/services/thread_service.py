@@ -178,7 +178,6 @@ async def update_thread(
 
     if tag_names is not None:
         tags = await tag_repo.get_or_create_tags(db, tag_names)
-        await db.refresh(updated, attribute_names=["tags"])
         updated.tags = tags
         await db.flush()
         await db.refresh(updated, attribute_names=["tags"])

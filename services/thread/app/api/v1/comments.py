@@ -98,6 +98,72 @@ async def _enrich_comment(
     )
 
 
+async def _enrich_comments(
+    comments: list,
+    db: AsyncSession,
+    current_user: dict | None,
+) -> list[CommentResponse]:
+    """Batch-enrich a list of comments with author snaps and ``is_liked``.
+
+    Replaces the per-item ``_enrich_comment`` loop with:
+      1. One ``WHERE user_id IN (…)`` for active-comment author snaps.
+      2. One ``WHERE comment_id IN (…)`` for all like checks.
+    """
+    if not comments:
+        return []
+
+    # 1. Collect author IDs only for ACTIVE comments (deleted/removed are anonymised)
+    active_author_ids = {
+        c.author_id
+        for c in comments
+        if c.status.name not in (STATUS_USER_DELETED, STATUS_MOD_REMOVED)
+    }
+    snaps_map = await user_snap_repo.get_user_snaps_by_ids(db, active_author_ids)
+
+    # 2. Batch-fetch liked comment IDs
+    liked_ids: set = set()
+    if current_user is not None:
+        comment_ids = {c.id for c in comments}
+        liked_ids = await like_repo.get_liked_comment_ids(
+            db,
+            user_id=current_user["user_id"],
+            comment_ids=comment_ids,
+        )
+
+    # 3. Build responses from pre-fetched data
+    results: list[CommentResponse] = []
+    for comment in comments:
+        status_name = comment.status.name
+
+        if status_name == STATUS_USER_DELETED:
+            content = "[deleted]"
+            author = None
+        elif status_name == STATUS_MOD_REMOVED:
+            content = "[removed]"
+            author = None
+        else:
+            content = comment.content
+            snap = snaps_map.get(comment.author_id)
+            author = UserSnapResponse.model_validate(snap) if snap is not None else None
+
+        results.append(
+            CommentResponse(
+                id=comment.id,
+                thread_id=comment.thread_id,
+                parent_comment_id=comment.parent_comment_id,
+                author_id=comment.author_id,
+                author=author,
+                content=content,
+                status=status_name,
+                like_count=comment.like_count,
+                reply_count=comment.reply_count,
+                is_liked=comment.id in liked_ids,
+                created_at=comment.created_at,
+            )
+        )
+    return results
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
@@ -156,7 +222,13 @@ async def list_comments(
 
     parsed_cursor: datetime | None = None
     if cursor is not None:
-        parsed_cursor = datetime.fromisoformat(cursor)
+        try:
+            parsed_cursor = datetime.fromisoformat(cursor)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid cursor format — expected ISO-8601 datetime.",
+            )
 
     role = current_user["role"] if current_user is not None else None
 
@@ -177,7 +249,7 @@ async def list_comments(
             role=role,
         )
 
-    enriched = [await _enrich_comment(c, db, current_user) for c in comments]
+    enriched = await _enrich_comments(comments, db, current_user)
     return CommentListResponse(comments=enriched, pagination=pagination)
 
 

@@ -15,7 +15,7 @@ PATCH /user-snaps/{user_id}    — update a user snapshot (owner only)
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -27,6 +27,37 @@ from app.services import user_snap_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/user-snaps", tags=["UserSnaps"])
+
+
+@router.get(
+    "/search",
+    response_model=list[UserSnapResponse],
+    summary="Search users by username prefix (for @mention autocomplete)",
+)
+async def search_users(
+    q: str = Query(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="Username prefix to search for",
+    ),
+    limit: int = Query(
+        default=10,
+        ge=1,
+        le=20,
+        description="Max results to return",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> list[UserSnapResponse]:
+    """Return users whose username starts with ``q`` (case-insensitive).
+
+    Used by the frontend to power the @mention autocomplete dropdown.
+    No authentication required — usernames are public.
+    """
+    from app.repositories import user_snap_repo
+
+    snaps = await user_snap_repo.search_usernames(db, query=q, limit=limit)
+    return [UserSnapResponse.model_validate(s) for s in snaps]
 
 
 @router.post("", response_model=UserSnapResponse, status_code=status.HTTP_201_CREATED)

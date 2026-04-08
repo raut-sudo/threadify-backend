@@ -20,6 +20,7 @@ class ThreadCreate(BaseModel):
 
     title: str = Field(min_length=1, max_length=300)
     content: str = Field(min_length=1)
+    tags: list[str] = Field(default_factory=list, max_length=10)
 
 
 class ThreadUpdate(BaseModel):
@@ -31,6 +32,7 @@ class ThreadUpdate(BaseModel):
 
     title: str | None = Field(default=None, min_length=1, max_length=300)
     content: str | None = Field(default=None, min_length=1)
+    tags: list[str] | None = Field(default=None, max_length=10)
 
 
 class ThreadResponse(BaseModel):
@@ -52,6 +54,7 @@ class ThreadResponse(BaseModel):
     like_count: int
     comment_count: int
     is_liked: bool = False
+    tags: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

@@ -43,6 +43,8 @@ class UserResponse(BaseModel):
     id: uuid.UUID
     username: str
     email: EmailStr
+    avatar_url: str | None = None
+    bio: str | None = None
     role: RoleResponse
     deleted: bool
     created_at: datetime
@@ -75,6 +77,16 @@ class UserUpdate(BaseModel):
         max_length=PASSWORD_MAX_LENGTH,
         description="New password",
     )
+    bio: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Short bio (max 500 chars)",
+    )
+    avatar_url: str | None = Field(
+        default=None,
+        max_length=512,
+        description="Cloudinary avatar URL (upload via client-side unsigned upload, then send URL here)",
+    )
 
 
 class UserListResponse(BaseModel):
@@ -82,3 +94,17 @@ class UserListResponse(BaseModel):
 
     users: list[UserResponse]
     total: int
+
+
+class RoleUpdateRequest(BaseModel):
+    """Admin payload for changing a user's role.
+
+    Only MEMBER and MOD are allowed — admin promotion is blocked.
+    """
+
+    role: str = Field(
+        ...,
+        pattern=r"^(MEMBER|MOD)$",
+        description="Target role (MEMBER or MOD)",
+        examples=["MOD"],
+    )

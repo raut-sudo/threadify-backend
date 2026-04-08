@@ -20,14 +20,19 @@ Or override the message at the call-site::
 from app.utils.constants import (
     ERR_ACCOUNT_ALREADY_DELETED,
     ERR_ACCOUNT_DELETED,
+    ERR_CANNOT_MODIFY_ADMIN,
+    ERR_CANNOT_MODIFY_SELF,
     ERR_DEFAULT_ROLE_MISSING,
     ERR_EMAIL_REGISTERED,
+    ERR_INSUFFICIENT_PERMISSIONS,
     ERR_INVALID_ACCESS_TOKEN,
     ERR_INVALID_CREDENTIALS,
     ERR_INVALID_REFRESH_TOKEN,
+    ERR_INVALID_ROLE,
     ERR_USER_NOT_FOUND,
     ERR_USER_UNAVAILABLE,
     ERR_USERNAME_TAKEN,
+    ERR_WRONG_PASSWORD,
 )
 
 
@@ -123,3 +128,41 @@ class AccountAlreadyDeletedError(AppException):
 
     status_code = 409
     detail = ERR_ACCOUNT_ALREADY_DELETED
+
+
+# ── Admin Exceptions ────────────────────────────────
+
+
+class InsufficientPermissionsError(AppException):
+    """Raised when a non-admin tries to access an admin-only endpoint."""
+
+    status_code = 403
+    detail = ERR_INSUFFICIENT_PERMISSIONS
+
+
+class CannotModifyAdminError(AppException):
+    """Raised when an admin tries to modify another admin's role or ban them."""
+
+    status_code = 403
+    detail = ERR_CANNOT_MODIFY_ADMIN
+
+
+class CannotModifySelfError(AppException):
+    """Raised when an admin tries to change their own role or ban themselves."""
+
+    status_code = 403
+    detail = ERR_CANNOT_MODIFY_SELF
+
+
+class InvalidRoleError(AppException):
+    """Raised when the requested role is not MEMBER or MOD."""
+
+    status_code = 400
+    detail = ERR_INVALID_ROLE
+
+
+class WrongPasswordError(AppException):
+    """Raised when the current password is incorrect during change-password."""
+
+    status_code = 400
+    detail = ERR_WRONG_PASSWORD

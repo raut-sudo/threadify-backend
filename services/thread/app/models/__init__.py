@@ -17,6 +17,7 @@ Usage::
 from app.models.comment import Comment
 from app.models.comment_like import CommentLike
 from app.models.entity_status import EntityStatus
+from app.models.tag import Tag, thread_tags
 from app.models.thread import Thread
 from app.models.thread_like import ThreadLike
 from app.models.user_snap import UserSnap
@@ -24,6 +25,8 @@ from app.models.user_snap import UserSnap
 __all__ = [
     "EntityStatus",
     "UserSnap",
+    "Tag",
+    "thread_tags",
     "Thread",
     "Comment",
     "ThreadLike",

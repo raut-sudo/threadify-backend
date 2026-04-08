@@ -1,14 +1,15 @@
 """RabbitMQ consumer for the WS gateway.
 
 Connects to ``realtime_exchange`` (topic, durable) and binds a single
-queue ``threadify.realtime`` with routing key ``realtime.*``.
+queue ``threadify.realtime`` with routing key ``realtime.#``.
 
 Dispatch table (by routing key)
 --------------------------------
-realtime.like          → handle_like_update  → emit "like_update"  to thread room
-realtime.comment       → handle_new_comment  → emit "new_comment"  to thread room
-realtime.post          → handle_new_post     → emit "new_post"     to all (broadcast)
-realtime.notification  → handle_notification → emit "notification" to user room
+realtime.like           → handle_like_update          → emit "like_update"          to thread room
+realtime.comment        → handle_new_comment          → emit "new_comment"          to thread room
+realtime.comment.liked  → handle_comment_like_update  → emit "comment_like_update"  to thread room
+realtime.post           → handle_new_post             → emit "new_post"             to all (broadcast)
+realtime.notification   → handle_notification         → emit "notification"         to user room
 
 All handlers are fire-and-forget from the socket.io perspective — if no
 client is in the target room the emit is a no-op (correct behaviour).
@@ -29,7 +30,7 @@ settings = get_settings()
 
 EXCHANGE_NAME = "realtime_exchange"
 QUEUE_NAME = "threadify.realtime"
-ROUTING_KEY = "realtime.*"
+ROUTING_KEY = "realtime.#"
 
 
 # ── Handlers ──────────────────────────────────────────────────────────────────
@@ -86,12 +87,87 @@ async def handle_notification(payload: dict) -> None:
     logger.debug("Emitted notification to user:%s", user_id)
 
 
+async def handle_comment_like_update(payload: dict) -> None:
+    """Broadcast a comment like/unlike event to all viewers of the thread."""
+    thread_id = payload.get("thread_id")
+    if not thread_id:
+        logger.warning("handle_comment_like_update: missing thread_id in payload")
+        return
+
+    await sio.emit(
+        "comment_like_update",
+        payload.get("data", {}),
+        room=f"thread:{thread_id}",
+    )
+    logger.debug("Emitted comment_like_update to thread:%s", thread_id)
+
+
+async def handle_thread_updated(payload: dict) -> None:
+    """Broadcast a thread edit to all viewers + global feed."""
+    thread_id = payload.get("thread_id")
+    if not thread_id:
+        return
+    await sio.emit(
+        "thread_updated",
+        payload.get("data", {}),
+        room=f"thread:{thread_id}",
+    )
+    # Also broadcast to global feed so thread lists stay fresh
+    await sio.emit("thread_updated", payload.get("data", {}))
+    logger.debug("Emitted thread_updated to thread:%s", thread_id)
+
+
+async def handle_thread_deleted(payload: dict) -> None:
+    """Broadcast a thread deletion to all viewers + global feed."""
+    thread_id = payload.get("thread_id")
+    if not thread_id:
+        return
+    await sio.emit(
+        "thread_deleted",
+        payload.get("data", {}),
+        room=f"thread:{thread_id}",
+    )
+    await sio.emit("thread_deleted", payload.get("data", {}))
+    logger.debug("Emitted thread_deleted to thread:%s", thread_id)
+
+
+async def handle_comment_updated(payload: dict) -> None:
+    """Broadcast a comment edit to all viewers of the thread."""
+    thread_id = payload.get("thread_id")
+    if not thread_id:
+        return
+    await sio.emit(
+        "comment_updated",
+        payload.get("data", {}),
+        room=f"thread:{thread_id}",
+    )
+    logger.debug("Emitted comment_updated to thread:%s", thread_id)
+
+
+async def handle_comment_deleted(payload: dict) -> None:
+    """Broadcast a comment deletion to all viewers of the thread."""
+    thread_id = payload.get("thread_id")
+    if not thread_id:
+        return
+    await sio.emit(
+        "comment_deleted",
+        payload.get("data", {}),
+        room=f"thread:{thread_id}",
+    )
+    logger.debug("Emitted comment_deleted to thread:%s", thread_id)
+
+
 # ── Routing ───────────────────────────────────────────────────────────────────
 
 _HANDLERS = {
     "realtime.like": handle_like_update,
     "realtime.comment": handle_new_comment,
+    "realtime.comment.liked": handle_comment_like_update,
+    "realtime.comment.updated": handle_comment_updated,
+    "realtime.comment.deleted": handle_comment_deleted,
     "realtime.post": handle_new_post,
+    "realtime.thread.updated": handle_thread_updated,
+    "realtime.thread.deleted": handle_thread_deleted,
     "realtime.notification": handle_notification,
 }
 

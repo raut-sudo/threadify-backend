@@ -23,9 +23,10 @@ from app.core.exceptions import (
     ThreadNotFoundError,
 )
 from app.events import publisher
-from app.events.payloads import build_like_updated
+from app.events.payloads import build_comment_like_updated, build_like_updated
 from app.repositories import comment_repo, like_repo, thread_repo
 from app.schemas.like import LikeResponse
+from app.utils.constants import STATUS_ACTIVE
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +40,14 @@ async def like_thread(
     user_id: uuid.UUID,
     thread_id: uuid.UUID,
 ) -> LikeResponse:
-    """Like a thread. Raises ``AlreadyLikedError`` on duplicate."""
+    """Like a thread. Raises ``AlreadyLikedError`` on duplicate.
+
+    Only ACTIVE threads can be liked. Deleted threads return 404.
+    """
     thread = await thread_repo.get_thread_by_id(db, thread_id)
     if thread is None:
+        raise ThreadNotFoundError()
+    if thread.status.name != STATUS_ACTIVE:
         raise ThreadNotFoundError()
 
     if await like_repo.has_user_liked_thread(db, user_id=user_id, thread_id=thread_id):
@@ -75,9 +81,14 @@ async def unlike_thread(
     user_id: uuid.UUID,
     thread_id: uuid.UUID,
 ) -> LikeResponse:
-    """Unlike a thread. Raises ``NotLikedError`` if not currently liked."""
+    """Unlike a thread. Raises ``NotLikedError`` if not currently liked.
+
+    Only ACTIVE threads can be unliked. Deleted threads return 404.
+    """
     thread = await thread_repo.get_thread_by_id(db, thread_id)
     if thread is None:
+        raise ThreadNotFoundError()
+    if thread.status.name != STATUS_ACTIVE:
         raise ThreadNotFoundError()
 
     if not await like_repo.has_user_liked_thread(
@@ -115,9 +126,14 @@ async def like_comment(
     user_id: uuid.UUID,
     comment_id: uuid.UUID,
 ) -> LikeResponse:
-    """Like a comment. Raises ``AlreadyLikedError`` on duplicate."""
+    """Like a comment. Raises ``AlreadyLikedError`` on duplicate.
+
+    Only ACTIVE comments can be liked. Deleted comments return 404.
+    """
     comment = await comment_repo.get_comment_by_id(db, comment_id)
     if comment is None:
+        raise CommentNotFoundError()
+    if comment.status.name != STATUS_ACTIVE:
         raise CommentNotFoundError()
 
     if await like_repo.has_user_liked_comment(
@@ -134,6 +150,16 @@ async def like_comment(
         user_id,
         comment.like_count,
     )
+    await publisher.publish_realtime(
+        "realtime.comment.liked",
+        build_comment_like_updated(
+            thread_id=comment.thread_id,
+            comment_id=comment_id,
+            like_count=comment.like_count,
+            liked_by=user_id,
+            liked=True,
+        ),
+    )
     return LikeResponse(like_count=comment.like_count, liked=True)
 
 
@@ -143,9 +169,14 @@ async def unlike_comment(
     user_id: uuid.UUID,
     comment_id: uuid.UUID,
 ) -> LikeResponse:
-    """Unlike a comment. Raises ``NotLikedError`` if not currently liked."""
+    """Unlike a comment. Raises ``NotLikedError`` if not currently liked.
+
+    Only ACTIVE comments can be unliked. Deleted comments return 404.
+    """
     comment = await comment_repo.get_comment_by_id(db, comment_id)
     if comment is None:
+        raise CommentNotFoundError()
+    if comment.status.name != STATUS_ACTIVE:
         raise CommentNotFoundError()
 
     if not await like_repo.has_user_liked_comment(
@@ -161,5 +192,15 @@ async def unlike_comment(
         comment_id,
         user_id,
         comment.like_count,
+    )
+    await publisher.publish_realtime(
+        "realtime.comment.liked",
+        build_comment_like_updated(
+            thread_id=comment.thread_id,
+            comment_id=comment_id,
+            like_count=comment.like_count,
+            liked_by=user_id,
+            liked=False,
+        ),
     )
     return LikeResponse(like_count=comment.like_count, liked=False)

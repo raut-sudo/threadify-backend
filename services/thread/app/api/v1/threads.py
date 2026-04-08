@@ -31,6 +31,7 @@ from app.schemas.thread import (
 )
 from app.schemas.user_snap import UserSnapResponse
 from app.services import like_service, thread_service
+from app.utils.constants import STATUS_USER_DELETED
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,11 @@ async def _enrich_thread(
     db: AsyncSession,
     current_user: dict | None,
 ) -> ThreadResponse:
-    """Build a ``ThreadResponse`` with author snap and ``is_liked`` populated."""
+    """Build a ``ThreadResponse`` with author snap and ``is_liked`` populated.
+
+    For USER_DELETED threads, title and content are masked as ``[deleted]``.
+    The thread remains accessible so its comment tree is still reachable.
+    """
     snap = await user_snap_repo.get_user_snap(db, thread.author_id)
     author = UserSnapResponse.model_validate(snap) if snap is not None else None
 
@@ -57,16 +62,26 @@ async def _enrich_thread(
             thread_id=thread.id,
         )
 
+    # Mask title and content for author-deleted threads
+    status_name = thread.status.name
+    if status_name == STATUS_USER_DELETED:
+        title = "[deleted]"
+        content = "[deleted]"
+    else:
+        title = thread.title
+        content = thread.content
+
     return ThreadResponse(
         id=thread.id,
-        title=thread.title,
-        content=thread.content,
+        title=title,
+        content=content,
         author_id=thread.author_id,
         author=author,
-        status=thread.status.name,
+        status=status_name,
         like_count=thread.like_count,
         comment_count=thread.comment_count,
         is_liked=is_liked,
+        tags=[tag.name for tag in thread.tags],
         created_at=thread.created_at,
         updated_at=thread.updated_at,
     )
@@ -87,6 +102,7 @@ async def create_thread(
         user_id=current_user["user_id"],
         title=payload.title,
         content=payload.content,
+        tag_names=payload.tags,
     )
     return await _enrich_thread(thread, db, current_user)
 
@@ -95,16 +111,36 @@ async def create_thread(
 async def list_threads(
     cursor: str | None = Query(default=None, description="ISO-8601 created_at cursor"),
     limit: int = Query(default=10, ge=1, le=100),
+    search: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Full-text search on title and content",
+    ),
+    tag: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=50,
+        description="Exact tag name filter (case-insensitive)",
+    ),
     current_user: dict | None = Depends(get_optional_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ThreadListResponse:
-    """Return a cursor-paginated list of ACTIVE threads, newest first."""
+    """Return a cursor-paginated list of ACTIVE threads, newest first.
+
+    Supports full-text search via ``?search=<text>`` and exact tag
+    filtering via ``?tag=<name>``.  Both can be combined.
+    """
     parsed_cursor: datetime | None = None
     if cursor is not None:
         parsed_cursor = datetime.fromisoformat(cursor)
 
     threads, pagination = await thread_service.list_threads(
-        db, cursor=parsed_cursor, limit=limit
+        db,
+        cursor=parsed_cursor,
+        limit=limit,
+        search=search,
+        tag=tag,
     )
 
     enriched = [await _enrich_thread(t, db, current_user) for t in threads]
@@ -120,8 +156,8 @@ async def get_thread(
     """Fetch a single thread by ID.
 
     Returns 404 for MOD_REMOVED threads when the requester is not
-    a mod/admin.  USER_DELETED threads are returned with content intact
-    (the author deleted their own thread; masking not applied here).
+    a mod/admin.  USER_DELETED threads are returned with title and
+    content masked as ``[deleted]``.  Comments remain accessible.
     """
     role = current_user["role"] if current_user is not None else None
     thread = await thread_service.get_thread(db, thread_id=thread_id, role=role)
@@ -145,6 +181,7 @@ async def update_thread(
         thread_id=thread_id,
         title=payload.title,
         content=payload.content,
+        tag_names=payload.tags,
     )
     return await _enrich_thread(thread, db, current_user)
 

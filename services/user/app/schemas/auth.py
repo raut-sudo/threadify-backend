@@ -45,6 +45,18 @@ class RegisterRequest(BaseModel):
         examples=["Str0ngP@ss!"],
         description="Password (8-128 characters)",
     )
+    bio: str | None = Field(
+        default=None,
+        max_length=500,
+        examples=["Full-stack dev from Mumbai"],
+        description="Short bio (max 500 chars, optional)",
+    )
+    avatar_url: str | None = Field(
+        default=None,
+        max_length=512,
+        examples=["https://res.cloudinary.com/..."],
+        description="Cloudinary avatar URL (upload via PATCH /users/me/avatar first)",
+    )
 
 
 class LoginRequest(BaseModel):
@@ -113,3 +125,19 @@ class AuthResponse(BaseModel):
     user: UserResponse
     access_token: str
     token_type: str = TOKEN_TYPE_BEARER
+
+
+class ChangePasswordRequest(BaseModel):
+    """Payload for PUT /users/me/password."""
+
+    current_password: str = Field(
+        ...,
+        min_length=1,
+        examples=["OldP@ss123"],
+    )
+    new_password: str = Field(
+        ...,
+        min_length=PASSWORD_MIN_LENGTH,
+        max_length=PASSWORD_MAX_LENGTH,
+        examples=["NewStr0ng!"],
+    )

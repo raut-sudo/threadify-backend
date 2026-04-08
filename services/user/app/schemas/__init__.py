@@ -14,7 +14,13 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.schemas.common import MessageResponse
-from app.schemas.user import RoleResponse, UserListResponse, UserResponse, UserUpdate
+from app.schemas.user import (
+    RoleResponse,
+    RoleUpdateRequest,
+    UserListResponse,
+    UserResponse,
+    UserUpdate,
+)
 
 __all__ = [
     "AccessTokenResponse",
@@ -24,6 +30,7 @@ __all__ = [
     "TokenResponse",
     "TokenRefreshRequest",
     "RoleResponse",
+    "RoleUpdateRequest",
     "UserResponse",
     "UserListResponse",
     "UserUpdate",

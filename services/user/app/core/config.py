@@ -14,9 +14,18 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "RS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # ── RabbitMQ ──────────────────────────────────
+    RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
+
     APP_NAME: str = "user-service"
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
+
+    # Bootstrap admin credentials — used only at first startup to seed the admin user.
+    # After the user row exists, these are never read again.
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_EMAIL: str = "admin@threadify.com"
+    ADMIN_PASSWORD: str = "Admin@123!"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

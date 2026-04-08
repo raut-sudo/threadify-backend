@@ -37,7 +37,7 @@ from app.schemas.common import MessageResponse
 from app.schemas.like import LikeResponse
 from app.schemas.user_snap import UserSnapResponse
 from app.services import comment_service, like_service
-from app.utils.constants import STATUS_USER_DELETED
+from app.utils.constants import STATUS_MOD_REMOVED, STATUS_USER_DELETED
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +53,27 @@ async def _enrich_comment(
     current_user: dict | None,
 ) -> CommentResponse:
     """Build a ``CommentResponse`` with author snap, ``is_liked``, and content
-    masking applied for USER_DELETED comments."""
-    snap = await user_snap_repo.get_user_snap(db, comment.author_id)
-    author = UserSnapResponse.model_validate(snap) if snap is not None else None
+    masking applied for deleted comments.
+
+    Masking rules:
+      USER_DELETED → content="[deleted]", author anonymised.
+      MOD_REMOVED  → content="[removed]", author anonymised.
+                     (only reaches here for mod/admin callers)
+      ACTIVE       → full content and author.
+    """
+    status_name = comment.status.name
+
+    # Determine content masking and author visibility
+    if status_name == STATUS_USER_DELETED:
+        content = "[deleted]"
+        author = None
+    elif status_name == STATUS_MOD_REMOVED:
+        content = "[removed]"
+        author = None
+    else:
+        content = comment.content
+        snap = await user_snap_repo.get_user_snap(db, comment.author_id)
+        author = UserSnapResponse.model_validate(snap) if snap is not None else None
 
     is_liked = False
     if current_user is not None:
@@ -65,11 +83,6 @@ async def _enrich_comment(
             comment_id=comment.id,
         )
 
-    # Mask content for USER_DELETED comments
-    content = (
-        "[deleted]" if comment.status.name == STATUS_USER_DELETED else comment.content
-    )
-
     return CommentResponse(
         id=comment.id,
         thread_id=comment.thread_id,
@@ -77,7 +90,7 @@ async def _enrich_comment(
         author_id=comment.author_id,
         author=author,
         content=content,
-        status=comment.status.name,
+        status=status_name,
         like_count=comment.like_count,
         reply_count=comment.reply_count,
         is_liked=is_liked,
@@ -145,12 +158,15 @@ async def list_comments(
     if cursor is not None:
         parsed_cursor = datetime.fromisoformat(cursor)
 
+    role = current_user["role"] if current_user is not None else None
+
     if parent_comment_id is not None:
         comments, pagination = await comment_service.get_replies(
             db,
             parent_comment_id=parent_comment_id,
             cursor=parsed_cursor,
             limit=limit,
+            role=role,
         )
     else:
         comments, pagination = await comment_service.get_comments_for_thread(
@@ -158,6 +174,7 @@ async def list_comments(
             thread_id=thread_id,  # type: ignore[arg-type]
             cursor=parsed_cursor,
             limit=limit,
+            role=role,
         )
 
     enriched = [await _enrich_comment(c, db, current_user) for c in comments]

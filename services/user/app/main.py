@@ -10,7 +10,8 @@ from app.core.config import get_settings
 from app.core.database import Base, async_session, engine
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
-from app.repositories.user_repo import seed_default_roles
+from app.events import publisher as user_publisher
+from app.repositories.user_repo import seed_admin_user, seed_default_roles
 
 configure_logging()
 
@@ -36,11 +37,28 @@ async def lifespan(_app: FastAPI):
 
     async with async_session() as db:
         await seed_default_roles(db)
+        await seed_admin_user(
+            db,
+            username=settings.ADMIN_USERNAME,
+            email=settings.ADMIN_EMAIL,
+            password=settings.ADMIN_PASSWORD,
+        )
         await db.commit()
         logger.info("Default roles seeded")
+        logger.info("Admin bootstrap complete (user: %s)", settings.ADMIN_USERNAME)
+
+    # Connect user_exchange publisher
+    try:
+        await user_publisher.connect(settings.RABBITMQ_URL)
+        logger.info("RabbitMQ user_exchange publisher connected")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "RabbitMQ publisher failed to connect (%s) — user events disabled", exc
+        )
 
     yield
 
+    await user_publisher.close()
     await engine.dispose()
     logger.info("%s shut down", settings.APP_NAME)
 
